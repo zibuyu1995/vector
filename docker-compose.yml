@@ -85,3 +85,10 @@ services:
         - 8681-8682:8681-8682
       environment:
         - PUBSUB_PROJECT1=testproject,topic1:subscription1
+    graphite-statsd:
+      image: graphiteapp/graphite-statsd
+      ports:
+        - "8127:80"
+        - "2003:2003"
+        - "8125:8125/udp"
+        - "8126:8126"

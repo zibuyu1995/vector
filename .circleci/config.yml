@@ -227,6 +227,7 @@ jobs:
       - image: messagebird/gcloud-pubsub-emulator
         environment:
           - PUBSUB_PROJECT1=testproject,topic1:subscription1
+      - image: graphiteapp/graphite-statsd
     steps:
       - checkout
       - setup_remote_docker:

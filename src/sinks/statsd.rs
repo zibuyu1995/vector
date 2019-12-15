@@ -216,7 +216,7 @@ mod test {
         buffers::Acker,
         event::{metric::MetricKind, metric::MetricValue, Metric},
         sources::statsd::parser::parse,
-        test_util::{collect_n, runtime},
+        test_util::{collect_n, next_addr, runtime},
         Event,
     };
     use bytes::Bytes;
@@ -313,9 +313,10 @@ mod test {
 
     #[test]
     fn test_send_to_statsd() {
+        let in_addr = next_addr();
         let config = StatsdSinkConfig {
             namespace: "vector".into(),
-            address: default_address(),
+            address: in_addr.clone(),
             batch: BatchConfig {
                 batch_size: Some(512),
                 batch_timeout: Some(1),
@@ -353,8 +354,8 @@ mod test {
         let (tx, rx) = mpsc::channel(1);
 
         let receiver = Box::new(
-            future::lazy(|| {
-                let socket = UdpSocket::bind(&default_address()).unwrap();
+            future::lazy(move || {
+                let socket = UdpSocket::bind(&in_addr).unwrap();
                 future::ok(socket)
             })
             .and_then(|socket| {
