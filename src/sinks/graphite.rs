@@ -1,7 +1,7 @@
 use crate::{
     buffers::Acker,
     event::metric::MetricValue,
-    sinks::tcp::TcpSink,
+    sinks::util::tcp::TcpSink,
     sinks::util::SinkExt,
     topology::config::{DataType, SinkConfig, SinkContext, SinkDescription},
     Event,
