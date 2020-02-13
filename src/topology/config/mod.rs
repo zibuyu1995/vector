@@ -196,6 +196,10 @@ pub struct TransformOuter {
 pub trait TransformConfig: core::fmt::Debug {
     fn build(&self, exec: TaskExecutor) -> crate::Result<Box<dyn transforms::Transform>>;
 
+    fn named_outputs(&self) -> Option<Vec<String>> {
+        None
+    }
+
     fn input_type(&self) -> DataType;
 
     fn output_type(&self) -> DataType;

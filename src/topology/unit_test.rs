@@ -64,11 +64,12 @@ fn walk(
     aggregated_results: &mut HashMap<String, (Vec<Event>, Vec<Event>)>,
 ) {
     let mut results = Vec::new();
+    let mut named_results = Vec::new();
     let mut targets = Vec::new();
 
     if let Some(target) = transforms.get_mut(node) {
         for input in inputs.clone() {
-            target.transform.transform_into(&mut results, input);
+            target.transform.transform_into(&mut results, &mut named_results, input);
         }
         targets = target.next.clone();
     }

@@ -163,7 +163,9 @@ pub fn build_pieces(
         let transform = input_rx
             .map(move |event| {
                 let mut output = Vec::with_capacity(1);
-                transform.transform_into(&mut output, event);
+                let mut named_outputs = Vec::new();
+                // TODO
+                transform.transform_into(&mut output, &mut named_outputs, event);
                 futures::stream::iter_ok(output.into_iter())
             })
             .flatten()
