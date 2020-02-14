@@ -28,7 +28,17 @@ impl Transform for Swimlanes {
         output.pop()
     }
 
-    fn transform_into(&mut self, output: &mut Vec<Event>, named_outputs: &mut Vec<(String, Vec<Event>)>, event: Event) {
+    fn transform_into(
+        &mut self,
+        _output: &mut Vec<Event>,
+        named_outputs: &mut Vec<(String, Vec<Event>)>,
+        event: Event,
+    ) {
+        for (name, cond) in &self.lanes {
+            if cond.check(&event) {
+                named_outputs.push((name.clone(), vec![event.clone()]));
+            }
+        }
     }
 }
 
@@ -56,7 +66,7 @@ impl TransformConfig for SwimlanesConfig {
         if lanes.is_empty() {
             Err("swimlanes must have at least one lane".into())
         } else {
-            Ok(Box::new(Swimlanes{lanes}))
+            Ok(Box::new(Swimlanes { lanes }))
         }
     }
 

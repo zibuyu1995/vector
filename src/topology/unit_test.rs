@@ -69,7 +69,9 @@ fn walk(
 
     if let Some(target) = transforms.get_mut(node) {
         for input in inputs.clone() {
-            target.transform.transform_into(&mut results, &mut named_results, input);
+            target
+                .transform
+                .transform_into(&mut results, &mut named_results, input);
         }
         targets = target.next.clone();
     }

@@ -1,6 +1,7 @@
 use super::{
     config::SinkContext,
     fanout::{self, Fanout},
+    multiplex::{Multiplex, MultiplexedSink},
     task::Task,
 };
 use crate::{buffers, dns::Resolver, runtime};
@@ -144,6 +145,7 @@ pub fn build_pieces(
     // Build transforms
     for (name, transform) in &config.transforms {
         let trans_inputs = &transform.inputs;
+        let named_outputs = transform.inner.named_outputs();
 
         let typetag = &transform.inner.transform_type();
 
@@ -158,24 +160,55 @@ pub fn build_pieces(
         let (input_tx, input_rx) = futures::sync::mpsc::channel(100);
         let input_tx = buffers::BufferInputCloner::Memory(input_tx, buffers::WhenFull::Block);
 
-        let (output, control) = Fanout::new();
-
-        let transform = input_rx
-            .map(move |event| {
-                let mut output = Vec::with_capacity(1);
-                let mut named_outputs = Vec::new();
-                // TODO
-                transform.transform_into(&mut output, &mut named_outputs, event);
-                futures::stream::iter_ok(output.into_iter())
-            })
-            .flatten()
-            .forward(output)
-            .map(|_| ());
-        let task = Task::new(&name, &typetag, transform);
-
         inputs.insert(name.clone(), (input_tx, trans_inputs.clone()));
-        outputs.insert(name.clone(), control);
-        tasks.insert(name.clone(), task);
+
+        if let Some(named_outputs) = named_outputs {
+            let mut named_controls = Vec::new();
+            let mut named_output_channels: HashMap<String, MultiplexedSink> = HashMap::new();
+
+            for name in named_outputs {
+                let (output, control) = Fanout::new();
+                named_controls.push((name.clone(), control));
+                named_output_channels.insert(name.clone(), Box::new(output));
+            }
+
+            let output = Multiplex::new(named_output_channels);
+
+            let transform = input_rx
+                .map(move |event| {
+                    let mut named_outputs_events = Vec::new();
+                    transform.transform_into(&mut Vec::new(), &mut named_outputs_events, event);
+                    futures::stream::iter_ok(
+                        named_outputs_events.into_iter().map(
+                            |(name, events)| events.iter().map(|e| (name.clone(), e)).collect()
+                        ).flatten()
+                    )
+                })
+                .flatten()
+                .forward(output)
+                .map(|_| ());
+
+            tasks.insert(name.clone(), Task::new(&name, &typetag, transform));
+            for (n, named_control) in named_controls {
+                outputs.insert(format!("{}.{}", name, n), named_control);
+            }
+        } else {
+            let (output, control) = Fanout::new();
+
+            let transform = input_rx
+                .map(move |event| {
+                    let mut output_events = Vec::with_capacity(1);
+                    // let mut named_outputs_events = Vec::new();
+                    transform.transform_into(&mut output_events, &mut Vec::new(), event);
+                    futures::stream::iter_ok(output_events.into_iter())
+                })
+                .flatten()
+                .forward(output)
+                .map(|_| ());
+
+            tasks.insert(name.clone(), Task::new(&name, &typetag, transform));
+            outputs.insert(name.clone(), control);
+        }
     }
 
     // Build sinks

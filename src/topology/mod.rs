@@ -1,6 +1,7 @@
 pub mod builder;
 pub mod config;
 mod fanout;
+mod multiplex;
 mod task;
 pub mod unit_test;
 

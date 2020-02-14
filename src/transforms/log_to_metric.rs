@@ -246,7 +246,12 @@ impl Transform for LogToMetric {
         output.pop()
     }
 
-    fn transform_into(&mut self, output: &mut Vec<Event>, _: &mut Vec<(String, Vec<Event>)>, event: Event) {
+    fn transform_into(
+        &mut self,
+        output: &mut Vec<Event>,
+        _: &mut Vec<(String, Vec<Event>)>,
+        event: Event,
+    ) {
         for config in self.config.metrics.iter() {
             match to_metric(&config, &event) {
                 Ok(metric) => {
