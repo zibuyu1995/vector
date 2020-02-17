@@ -10,7 +10,7 @@ use futures::{
     sync::mpsc,
     Future, Stream,
 };
-use std::{collections::HashMap, time::Duration};
+use std::{collections::{HashMap, HashSet}, time::Duration};
 use stream_cancel::{Trigger, Tripwire};
 use tokio::util::FutureExt;
 
@@ -35,7 +35,25 @@ pub fn check(config: &super::Config) -> Result<Vec<String>, Vec<String>> {
     let transform_inputs = config
         .transforms
         .iter()
-        .map(|(name, transform)| ("transform", name.clone(), transform.inputs.clone()));
+        .map(|(name, transform)| {
+            if let Some(named_outputs) = transform.inner.named_outputs() {
+                named_outputs.iter().map(|o| ("transform", format!("{}.{}", name, o), transform.inputs.clone())).collect()
+            } else {
+                vec![("transform", name.clone(), transform.inputs.clone())]
+            }
+        })
+        .flatten();
+
+    let input_names = config.sources.keys().map(|k| k.clone()).chain(
+        config.transforms.iter().map(|(name, transform)| {
+            if let Some(named_outputs) = transform.inner.named_outputs() {
+                named_outputs.iter().map(|o| format!("{}.{}", name, o)).collect()
+            } else {
+                vec![name.clone()]
+            }
+        }).flatten()
+    ).collect::<HashSet<_>>();
+
     for (output_type, name, inputs) in sink_inputs.chain(transform_inputs) {
         if inputs.is_empty() {
             errors.push(format!(
@@ -46,7 +64,7 @@ pub fn check(config: &super::Config) -> Result<Vec<String>, Vec<String>> {
         }
 
         for input in inputs {
-            if !config.sources.contains_key(&input) && !config.transforms.contains_key(&input) {
+            if !input_names.contains(&input) {
                 errors.push(format!(
                     "Input {:?} for {} {:?} doesn't exist.",
                     input, output_type, name
@@ -174,13 +192,19 @@ pub fn build_pieces(
 
             let output = Multiplex::new(named_output_channels);
 
-            let transform = input_rx
+            let transform_chan = input_rx
                 .map(move |event| {
                     let mut named_outputs_events = Vec::new();
                     transform.transform_into(&mut Vec::new(), &mut named_outputs_events, event);
                     futures::stream::iter_ok(
                         named_outputs_events.into_iter().map(
-                            |(name, events)| events.iter().map(|e| (name.clone(), e)).collect()
+                            |(name, mut events)| {
+                                let mut enum_events = Vec::new();
+                                while let Some(event) = events.pop() {
+                                    enum_events.push((name.clone(), event));
+                                }
+                                enum_events
+                            }
                         ).flatten()
                     )
                 })
@@ -188,7 +212,7 @@ pub fn build_pieces(
                 .forward(output)
                 .map(|_| ());
 
-            tasks.insert(name.clone(), Task::new(&name, &typetag, transform));
+            tasks.insert(name.clone(), Task::new(&name, &typetag, transform_chan));
             for (n, named_control) in named_controls {
                 outputs.insert(format!("{}.{}", name, n), named_control);
             }
@@ -198,7 +222,6 @@ pub fn build_pieces(
             let transform = input_rx
                 .map(move |event| {
                     let mut output_events = Vec::with_capacity(1);
-                    // let mut named_outputs_events = Vec::new();
                     transform.transform_into(&mut output_events, &mut Vec::new(), event);
                     futures::stream::iter_ok(output_events.into_iter())
                 })

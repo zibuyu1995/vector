@@ -1,7 +1,5 @@
-use crate::sinks::RouterSink;
 use crate::Event;
-use futures::sync::mpsc;
-use futures::{future, Async, AsyncSink, Poll, Sink, StartSend, Stream};
+use futures::{Async, AsyncSink, Poll, Sink, StartSend};
 use std::collections::HashMap;
 
 pub struct Multiplex {
@@ -13,11 +11,6 @@ pub type MultiplexedSink = Box<dyn Sink<SinkItem = Event, SinkError = ()> + 'sta
 impl Multiplex {
     pub fn new(sinks: HashMap<String, MultiplexedSink>) -> Self {
         Self { sinks }
-    }
-
-    fn remove(&mut self, name: &str) {
-        let mut removed = self.sinks.remove(name).expect("Didn't find output in multiplexer");
-        tokio::spawn(future::poll_fn(move || removed.close()));
     }
 }
 
