@@ -29,42 +29,49 @@ pub enum LookupIp {
 }
 
 impl Resolver {
-    pub fn new(dns_servers: Vec<String>, exec: TaskExecutor) -> Result<Self, DnsError> {
-        let (config, opt) = if !dns_servers.is_empty() {
-            let mut config = ResolverConfig::new();
+    pub fn new(
+        dns_servers: impl Into<Option<Vec<String>>>,
+        exec: TaskExecutor,
+    ) -> Result<Self, DnsError> {
+        let (config, opt) = if let Some(dns_servers) = dns_servers.into() {
+            if !dns_servers.is_empty() {
+                let mut config = ResolverConfig::new();
 
-            let mut errors = Vec::new();
+                let mut errors = Vec::new();
 
-            for s in dns_servers.iter() {
-                let parsed = s
-                    .parse::<SocketAddr>()
-                    .or_else(|_| s.parse::<IpAddr>().map(|ip| SocketAddr::new(ip, DNS_PORT)));
+                for s in dns_servers.iter() {
+                    let parsed = s
+                        .parse::<SocketAddr>()
+                        .or_else(|_| s.parse::<IpAddr>().map(|ip| SocketAddr::new(ip, DNS_PORT)));
 
-                match parsed {
-                    Ok(socket_addr) => config.add_name_server(NameServerConfig {
-                        socket_addr,
-                        protocol: Protocol::Udp,
-                        tls_dns_name: None,
-                    }),
-                    Err(error) => errors.push(format!(
-                        "Unable to parse dns server: {}, because {}",
-                        s, error
-                    )),
+                    match parsed {
+                        Ok(socket_addr) => config.add_name_server(NameServerConfig {
+                            socket_addr,
+                            protocol: Protocol::Udp,
+                            tls_dns_name: None,
+                        }),
+                        Err(error) => errors.push(format!(
+                            "Unable to parse dns server: {}, because {}",
+                            s, error
+                        )),
+                    }
                 }
+
+                if !errors.is_empty() {
+                    return Err(DnsError::ServerList { errors });
+                }
+
+                let mut opts = ResolverOpts::default();
+                opts.attempts = 2;
+                opts.validate = false;
+                opts.ip_strategy = LookupIpStrategy::Ipv4AndIpv6;
+                // FIXME: multipe requests fails when this is commented out
+                opts.num_concurrent_reqs = 1;
+
+                (config, opts)
+            } else {
+                (Default::default(), Default::default())
             }
-
-            if !errors.is_empty() {
-                return Err(DnsError::ServerList { errors });
-            }
-
-            let mut opts = ResolverOpts::default();
-            opts.attempts = 2;
-            opts.validate = false;
-            opts.ip_strategy = LookupIpStrategy::Ipv4AndIpv6;
-            // FIXME: multipe requests fails when this is commented out
-            opts.num_concurrent_reqs = 1;
-
-            (config, opts)
         } else {
             system_conf::read_system_conf().context(ReadSystemConf)?
         };

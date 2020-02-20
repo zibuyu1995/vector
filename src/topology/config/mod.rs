@@ -39,7 +39,7 @@ pub struct GlobalOptions {
     #[serde(default = "default_data_dir")]
     pub data_dir: Option<PathBuf>,
     #[serde(default)]
-    pub dns_servers: Vec<String>,
+    pub dns_servers: Option<Vec<String>>,
     #[serde(default)]
     pub log_schema: event::LogSchema,
 }
