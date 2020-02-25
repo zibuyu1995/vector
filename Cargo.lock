@@ -4907,7 +4907,6 @@ dependencies = [
  "tokio-compat",
  "tokio-retry",
  "tokio-signal",
- "tokio-threadpool",
  "tokio-tls",
  "tokio-uds",
  "tokio01-test",
