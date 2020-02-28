@@ -1,0 +1,31 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "type": "lldb",
+      "request": "launch",
+      "name": "Debug benchmark 'bench'",
+      "cargo": {
+        "args": ["bench", "--no-run", "--bench=bench"],
+        "filter": {
+          "name": "bench",
+          "kind": "bench"
+        }
+      },
+      "args": ["--bench"],
+      "cwd": "${workspaceFolder}",
+      "initCommands": [
+        "command script import /home/mozgiii/lldb-trace/trace.py"
+      ],
+      "stopOnEntry": true
+    },
+    {
+      "type": "lldb",
+      "request": "launch",
+      "name": "Debug benchmark prebuilt",
+      "program": "target/release/deps/bench-870eccfe94dbf8b8",
+      "args": ["--bench"],
+      "cwd": "${workspaceFolder}"
+    }
+  ]
+}
