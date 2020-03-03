@@ -49,7 +49,7 @@ tokio02 = { package = "tokio", version = "0.2", features = ["blocking"] }
 tokio-retry = "0.2.0"
 tokio-signal = "0.2.7"
 tokio-tls = "0.2.1"
-tokio-compat = { version = "0.1", features = ["rt-full"], git = "https://github.com/tokio-rs/tokio-compat.git" }
+tokio-compat = { version = "0.1", features = ["rt-full"] }
 
 # Tracing
 tracing = "0.1.9"
