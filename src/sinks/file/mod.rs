@@ -25,6 +25,8 @@ use bytes_path::BytesPath;
 mod streaming_sink;
 use streaming_sink::StreamingSink;
 
+mod event_processor;
+
 #[derive(Deserialize, Serialize, Debug)]
 #[serde(deny_unknown_fields)]
 pub struct FileSinkConfig {
