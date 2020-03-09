@@ -369,7 +369,9 @@ mod test {
         );
 
         rt.spawn(receiver);
+        trace!(message = "Before block_on");
         let _ = rt.block_on(sender).unwrap();
+        trace!(message = "After block_on");
 
         let messages = rt.block_on(collect_n(rx, 1)).ok().unwrap();
         assert_eq!(
