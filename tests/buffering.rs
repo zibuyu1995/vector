@@ -3,6 +3,7 @@
 use futures01::Future;
 use prost::Message;
 use tempfile::tempdir;
+use tracing::trace;
 use vector::event::{self, Event};
 use vector::test_util::{
     block_on, next_addr, random_lines, receive, runtime, send_lines, shutdown_on_idle, wait_for_tcp,
@@ -97,6 +98,9 @@ fn test_buffering() {
 
 #[test]
 fn test_max_size() {
+    vector::test_util::trace_init();
+    trace!(message = "TR 1");
+
     let data_dir = tempdir().unwrap();
     let data_dir = data_dir.path().to_path_buf();
 
@@ -138,16 +142,26 @@ fn test_max_size() {
 
     let mut rt = runtime::Runtime::new().unwrap();
 
+    trace!(message = "TR 2");
     let (topology, _crash) = topology::start(config, &mut rt, false).unwrap();
+
+    trace!(message = "TR 3");
+
     wait_for_tcp(in_addr);
+
+    trace!(message = "TR 4");
 
     let send = send_lines(in_addr, input_lines.clone().into_iter());
     rt.block_on(send).unwrap();
+    trace!(message = "TR 5");
 
     std::thread::sleep(std::time::Duration::from_millis(100));
 
+    trace!(message = "TR 6");
     rt.shutdown_now().wait().unwrap();
+    trace!(message = "TR 7");
     drop(topology);
+    trace!(message = "TR 8");
 
     // Start sink server, then run vector again. It should send the lines from the first run that fit in the limited space
     let mut config = config::Config::empty();
@@ -166,19 +180,27 @@ fn test_max_size() {
     };
     config.global.data_dir = Some(data_dir);
 
+    trace!(message = "TR 9");
     let mut rt = runtime::Runtime::new().unwrap();
 
+    trace!(message = "TR 10");
     let output_lines = receive(&out_addr);
 
+    trace!(message = "TR 11");
     let (topology, _crash) = topology::start(config, &mut rt, false).unwrap();
 
+    trace!(message = "TR 12");
     wait_for_tcp(in_addr);
 
+    trace!(message = "TR 13");
     rt.block_on(topology.stop()).unwrap();
 
+    trace!(message = "TR 14");
     shutdown_on_idle(rt);
 
+    trace!(message = "TR 15");
     let output_lines = output_lines.wait();
+    trace!(message = "TR 16");
     assert_eq!(num_lines / 2, output_lines.len());
     assert_eq!(&input_lines[..num_lines / 2], &output_lines[..]);
 }
