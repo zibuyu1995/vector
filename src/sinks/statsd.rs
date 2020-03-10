@@ -220,7 +220,12 @@ mod test {
         Event,
     };
     use bytes::Bytes;
-    use futures01::{stream, stream::Stream, sync::mpsc, Sink};
+    use futures01::{
+        stream,
+        stream::Stream,
+        sync::{mpsc, oneshot},
+        Sink,
+    };
     use std::str::from_utf8;
     use tokio::{
         self,
@@ -353,17 +358,25 @@ mod test {
         let stream = stream::iter_ok(events.clone().into_iter());
         let sender = sink.send_all(stream);
 
-        let (tx, rx) = mpsc::channel(1);
+        let (tx, rx) = mpsc::channel(0);
+
+        let (ready_tx, ready_rx) = oneshot::channel::<()>();
 
         let receiver = Box::new(
             future::lazy(|| {
                 trace!(message = "TR 6");
                 let socket = UdpSocket::bind(&default_address()).unwrap();
                 trace!(message = "TR 7");
+                ready_tx.send(()).unwrap();
+                trace!(message = "TR 7-1");
                 future::ok(socket)
             })
             .and_then(|socket| {
                 UdpFramed::new(socket, BytesCodec::new())
+                    .map(|v| {
+                        trace!(message = "TR 8");
+                        v
+                    })
                     .map_err(|e| error!("error reading line: {:?}", e))
                     .map(|(bytes, _addr)| bytes)
                     .forward(tx.sink_map_err(|e| error!("error sending event: {:?}", e)))
@@ -374,6 +387,9 @@ mod test {
         trace!(message = "TR 2");
         rt.spawn(receiver);
         trace!(message = "TR 3");
+        ready_rx.wait().unwrap();
+        trace!(message = "TR 3-1");
+
         let _ = rt.block_on(sender).unwrap();
         trace!(message = "TR 4");
 
