@@ -155,7 +155,8 @@ fn test_max_size() {
     rt.block_on(send).unwrap();
     trace!(message = "TR 5");
 
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    // FIXME: this is a race condition. Redesign the test to get rid of it.
+    std::thread::sleep(std::time::Duration::from_millis(10000));
 
     trace!(message = "TR 6");
     rt.shutdown_now().wait().unwrap();
