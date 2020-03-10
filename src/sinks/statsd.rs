@@ -314,6 +314,7 @@ mod test {
     #[test]
     fn test_send_to_statsd() {
         crate::test_util::trace_init();
+        trace!(message = "TR 1");
 
         let config = StatsdSinkConfig {
             namespace: "vector".into(),
@@ -356,7 +357,9 @@ mod test {
 
         let receiver = Box::new(
             future::lazy(|| {
+                trace!(message = "TR 6");
                 let socket = UdpSocket::bind(&default_address()).unwrap();
+                trace!(message = "TR 7");
                 future::ok(socket)
             })
             .and_then(|socket| {
@@ -368,12 +371,14 @@ mod test {
             }),
         );
 
+        trace!(message = "TR 2");
         rt.spawn(receiver);
-        trace!(message = "Before block_on");
+        trace!(message = "TR 3");
         let _ = rt.block_on(sender).unwrap();
-        trace!(message = "After block_on");
+        trace!(message = "TR 4");
 
         let messages = rt.block_on(collect_n(rx, 1)).ok().unwrap();
+        trace!(message = "TR 5");
         assert_eq!(
             messages[0],
             Bytes::from("vector.counter:1.5|c|#empty_tag:,normal_tag:value,true_tag\nvector.histogram:2|h|@0.01")
