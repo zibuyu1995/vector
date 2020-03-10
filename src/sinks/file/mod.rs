@@ -116,7 +116,7 @@ impl FileSink {
                         Some(event) => self.process_event(event).await,
                     }
                 }
-                result = &mut self.files => {
+                result = self.files.next_expired() => {
                     match result {
                         Ok((mut expired_file, path)) => {
                             // We got an expired file. All we really want is to

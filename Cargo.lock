@@ -1108,20 +1108,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0bae52d6b29cf440e298856fec3965ee6fa71b06aa7495178615953fd669e5f9"
 
 [[package]]
-name = "futures-test"
-version = "0.3.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "21f91b8d7256459b7e531fa3333614879e75d70644793206a124b5f33c6ff796"
-dependencies = [
- "futures-core",
- "futures-executor",
- "futures-io",
- "futures-task",
- "futures-util",
- "pin-utils",
-]
-
-[[package]]
 name = "futures-util"
 version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4129,6 +4115,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "tokio-test"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "09cf9705471976fa5fc6817d3fbc9c4ff9696a6647af0e5c1870c81ca7445b05"
+dependencies = [
+ "bytes 0.5.4",
+ "futures-core",
+ "tokio 0.2.13",
+]
+
+[[package]]
 name = "tokio-threadpool"
 version = "0.1.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4876,7 +4873,6 @@ dependencies = [
  "flate2",
  "futures 0.1.29",
  "futures 0.3.1",
- "futures-test",
  "getset",
  "glob 0.2.11",
  "goauth",
@@ -4947,6 +4943,7 @@ dependencies = [
  "tokio-compat",
  "tokio-retry",
  "tokio-signal",
+ "tokio-test",
  "tokio-tls",
  "tokio-uds",
  "tokio01-test",
