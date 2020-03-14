@@ -29,7 +29,7 @@
   "MD033": false, // we allow HTML
   "MD034": false, // we allow full URLs in special cases, such as component attributes
   "MD035": true,
-  "MD036": true,
+  "MD036": false, // for use in examples or definitions
   "MD037": true,
   "MD038": true,
   "MD039": true,
