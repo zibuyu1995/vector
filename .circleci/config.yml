@@ -1026,10 +1026,10 @@ workflows:
             - release-s3
 
   nightly:
-    triggers:
-      - schedule:
-          cron: "0 11 * * *"
-          <<: *master-filters
+    # triggers:
+    #   - schedule:
+    #       cron: "0 11 * * *"
+    #       <<: *master-filters
 
     jobs:
       - check-code
@@ -1100,8 +1100,8 @@ workflows:
 
       # Release
 
-      - release-docker:
-          <<: *require-tests-checks-and-verifications
+      # - release-docker:
+      #     <<: *require-tests-checks-and-verifications
       - release-s3:
           <<: *require-tests-checks-and-verifications
 
