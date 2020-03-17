@@ -804,7 +804,7 @@ require-tests-checks-and-verifications: &require-tests-checks-and-verifications
     - check-fmt
     - check-generate
     - check-blog
-    - test-stable
+    # - test-stable
     # - test-stable-kubernetes
     - build-x86_64-unknown-linux-musl-archive-and-deb-package
     - build-aarch64-unknown-linux-musl-archive-and-deb-package
@@ -1036,7 +1036,7 @@ workflows:
       - check-fmt
       - check-generate
       - check-blog
-      - test-stable
+      # - test-stable
       # - test-stable-kubernetes
 
       # Build & verify
