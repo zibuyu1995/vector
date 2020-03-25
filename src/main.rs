@@ -31,35 +31,35 @@ struct RootOpts {
     /// Read configuration from one or more files. Wildcard paths are supported.
     /// If zero files are specified the default config path
     /// `/etc/vector/vector.toml` will be targeted.
-    #[structopt(name = "config", short, long)]
+    #[structopt(name = "config", short, long, env)]
     config_paths: Vec<PathBuf>,
 
     /// Exit on startup if any sinks fail healthchecks
-    #[structopt(short, long)]
+    #[structopt(short, long, env)]
     require_healthy: bool,
 
     /// Exit on startup after config verification and optional healthchecks are run
-    #[structopt(short, long)]
+    #[structopt(short, long, env)]
     dry_run: bool,
 
     /// Serve internal metrics from the given address
-    #[structopt(short, long)]
+    #[structopt(short, long, env)]
     metrics_addr: Option<SocketAddr>,
 
     /// Number of threads to use for processing (default is number of available cores)
-    #[structopt(short, long)]
+    #[structopt(short, long, env)]
     threads: Option<usize>,
 
     /// Enable more detailed internal logging. Repeat to increase level. Overridden by `--quiet`.
-    #[structopt(short, long, parse(from_occurrences))]
+    #[structopt(short, long, parse(from_occurrences), env)]
     verbose: u8,
 
     /// Reduce detail of internal logging. Repeat to reduce further. Overrides `--verbose`.
-    #[structopt(short, long, parse(from_occurrences))]
+    #[structopt(short, long, parse(from_occurrences), env)]
     quiet: u8,
 
     /// Set the logging format. Options are "text" or "json". Defaults to "text".
-    #[structopt(long)]
+    #[structopt(long, env)]
     log_format: Option<LogFormat>,
 
     /// Control when ANSI terminal formatting is used.
@@ -71,11 +71,11 @@ struct RootOpts {
     /// to detect it automatically.
     ///
     /// Options: `auto`, `always` or `never`
-    #[structopt(long)]
+    #[structopt(long, env)]
     color: Option<Color>,
 
     /// Watch for changes in configuration file, and reload accordingly.
-    #[structopt(short, long)]
+    #[structopt(short, long, env)]
     watch_config: bool,
 }
 
@@ -100,11 +100,11 @@ enum SubCommand {
 #[structopt(rename_all = "kebab-case")]
 struct Validate {
     /// Ensure that the config topology is correct and that all components resolve
-    #[structopt(short, long)]
+    #[structopt(short, long, env)]
     topology: bool,
 
     /// Fail validation on warnings
-    #[structopt(short, long)]
+    #[structopt(short, long, env)]
     deny_warnings: bool,
 
     /// Any number of Vector config files to validate. If none are specified the
