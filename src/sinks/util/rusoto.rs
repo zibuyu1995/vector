@@ -1,6 +1,7 @@
 #![cfg(feature = "rusoto_core")]
 
 use crate::{dns::Resolver, sinks::util};
+use futures::{FutureExt, TryFutureExt};
 use futures01::{
     future::{self, Future, FutureResult},
     Async, Poll, Stream,
@@ -9,7 +10,7 @@ use http::{
     header::{HeaderMap, HeaderName, HeaderValue},
     Method, Request, Response,
 };
-use hyper::body::Payload;
+use http_body::Body as HttpBody;
 use rusoto_core::{
     request::{DispatchSignedRequest, HttpDispatchError, HttpResponse},
     signature::{SignedRequest, SignedRequestPayload},
@@ -22,7 +23,12 @@ use rusoto_credential::{
 };
 use rusoto_sts::{StsAssumeRoleSessionCredentialsProvider, StsClient};
 use snafu::{ResultExt, Snafu};
-use std::{io, time::Duration};
+use std::{
+    io,
+    pin::Pin,
+    task::{Context, Poll as Poll03},
+    time::Duration,
+};
 use tower::Service;
 
 pub type Client = HttpClient<util::http::HttpClient<RusotoBody>>;
@@ -199,6 +205,8 @@ where
         };
 
         let fut = request
+            .boxed()
+            .compat()
             .and_then(|response| {
                 let status = response.status();
                 let headers = response
@@ -224,35 +232,42 @@ where
     }
 }
 
-impl Payload for RusotoBody {
+impl HttpBody for RusotoBody {
     type Data = io::Cursor<Vec<u8>>;
     type Error = io::Error;
 
-    fn poll_data(&mut self) -> Poll<Option<Self::Data>, Self::Error> {
-        match &mut self.inner {
-            Some(SignedRequestPayload::Buffer(buf)) => {
-                if !buf.is_empty() {
-                    let buf = buf.split_off(0);
-                    Ok(Async::Ready(Some(io::Cursor::new(
-                        buf.into_iter().collect(),
-                    ))))
-                } else {
-                    Ok(Async::Ready(None))
-                }
-            }
-            Some(SignedRequestPayload::Stream(stream)) => match stream.poll()? {
-                Async::Ready(Some(buffer)) => Ok(Async::Ready(Some(io::Cursor::new(
-                    buffer.into_iter().collect(),
-                )))),
-                Async::Ready(None) => Ok(Async::Ready(None)),
-                Async::NotReady => Ok(Async::NotReady),
-            },
-            None => Ok(Async::Ready(None)),
-        }
+    fn poll_data(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+    ) -> Poll03<Option<Result<Self::Data, Self::Error>>> {
+        // match &mut self.inner {
+        //     Some(SignedRequestPayload::Buffer(buf)) => {
+        //         if !buf.is_empty() {
+        //             let buf = buf.split_off(0);
+        //             Ok(Async::Ready(Some(io::Cursor::new(
+        //                 buf.into_iter().collect(),
+        //             ))))
+        //         } else {
+        //             Ok(Async::Ready(None))
+        //         }
+        //     }
+        //     Some(SignedRequestPayload::Stream(stream)) => match stream.poll()? {
+        //         Async::Ready(Some(buffer)) => Ok(Async::Ready(Some(io::Cursor::new(
+        //             buffer.into_iter().collect(),
+        //         )))),
+        //         Async::Ready(None) => Ok(Async::Ready(None)),
+        //         Async::NotReady => Ok(Async::NotReady),
+        //     },
+        //     None => Ok(Async::Ready(None)),
+        // }
+        todo!("rusotobody poll_data")
     }
 
-    fn poll_trailers(&mut self) -> Poll<Option<HeaderMap>, Self::Error> {
-        Ok(Async::Ready(None))
+    fn poll_trailers(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+    ) -> Poll03<Result<Option<HeaderMap>, Self::Error>> {
+        Ok(None).into()
     }
 }
 

@@ -6,6 +6,7 @@ use crate::{
     tls::TlsSettings,
     topology::config::{DataType, SinkConfig, SinkContext, SinkDescription},
 };
+use bytes05::Buf;
 use futures::{compat::Future01CompatExt, TryFutureExt};
 use futures01::{Sink, Stream};
 use http::{Request, StatusCode, Uri};
@@ -114,7 +115,8 @@ async fn healthcheck(config: HoneycombConfig, resolver: Resolver) -> Result<(), 
     let res = client.send(req).await?;
 
     let status = res.status();
-    let body = res.into_body().concat2().compat().await?;
+    let body = hyper::body::aggregate(res.into_body()).await?;
+    let body = body.bytes();
 
     if status == StatusCode::BAD_REQUEST {
         Ok(())

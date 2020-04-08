@@ -11,12 +11,13 @@ use crate::{
 };
 use bytes::Bytes;
 use futures01::{Future, Sink};
-use http::{HttpTryFrom, Method, Request, StatusCode, Uri};
+use http::{Method, Request, StatusCode, Uri};
 use hyper::Body;
 use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, value::Value as JsonValue};
 use snafu::{ResultExt, Snafu};
+use std::convert::TryFrom;
 use string_cache::DefaultAtom as Atom;
 use tower::Service;
 

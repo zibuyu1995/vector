@@ -10,16 +10,21 @@ use crate::{
     topology::config::SinkContext,
 };
 use bytes::Bytes;
-use futures::compat::Future01CompatExt;
+use futures::future::BoxFuture;
 use futures01::{Async, AsyncSink, Future, Poll, Sink, StartSend, Stream};
 use http::header::HeaderValue;
 use http::{Request, StatusCode};
-use hyper::body::{Body, Payload};
+use http_body::Body as HttpBody;
+use hyper::body::Body;
 use hyper::client::HttpConnector;
 use hyper::Client;
 use hyper_openssl::HttpsConnector;
 use serde::{Deserialize, Serialize};
-use std::{fmt, sync::Arc};
+use std::{
+    fmt,
+    sync::Arc,
+    task::{Context, Poll as Poll03},
+};
 use tokio01::executor::DefaultExecutor;
 use tower::Service;
 use tracing::Span;
@@ -167,7 +172,7 @@ pub struct HttpClient<B = Body> {
 
 impl<B> HttpClient<B>
 where
-    B: Payload + Send + 'static,
+    B: HttpBody + Send + 'static,
     B::Data: Send,
 {
     pub fn new(
@@ -208,21 +213,21 @@ where
     }
 
     pub async fn send(&mut self, request: Request<B>) -> crate::Result<http::Response<Body>> {
-        self.call(request).compat().await.map_err(Into::into)
+        self.call(request).await.map_err(Into::into)
     }
 }
 
 impl<B> Service<Request<B>> for HttpClient<B>
 where
-    B: Payload + Send + 'static,
+    B: HttpBody + Send + 'static,
     B::Data: Send,
 {
     type Response = http::Response<Body>;
     type Error = Error;
-    type Future = Box<dyn Future<Item = Self::Response, Error = Self::Error> + Send + 'static>;
+    type Future = BoxFuture<'static, Result<Self::Response, Self::Error>>;
 
-    fn poll_ready(&mut self) -> Poll<(), Self::Error> {
-        Ok(().into())
+    fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll03<Result<(), Self::Error>> {
+        Ok(()).into()
     }
 
     fn call(&mut self, mut request: Request<B>) -> Self::Future {
@@ -296,9 +301,9 @@ impl<B> HttpBatchService<B> {
 impl<B> Service<B> for HttpBatchService<B> {
     type Response = Response;
     type Error = Error;
-    type Future = Box<dyn Future<Item = Self::Response, Error = Self::Error> + Send + 'static>;
+    type Future = BoxFuture<'static, Result<Self::Response, Self::Error>>;
 
-    fn poll_ready(&mut self) -> Poll<(), Self::Error> {
+    fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<(), Self::Error> {
         Ok(().into())
     }
 
@@ -310,7 +315,7 @@ impl<B> Service<B> for HttpBatchService<B> {
                 .map(|b| hyper::Response::from_parts(parts, b.into_bytes()))
         });
 
-        Box::new(fut)
+        Box::pin(fut)
     }
 }
 

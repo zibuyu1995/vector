@@ -11,7 +11,8 @@ use crate::{
     topology::config::{DataType, SinkConfig, SinkContext, SinkDescription},
 };
 use chrono::{DateTime, Utc};
-use futures01::{Future, Poll, Sink};
+use futures::compat::Compat01As03;
+use futures01::{Future, Sink};
 use http::{Method, StatusCode, Uri};
 use hyper;
 use lazy_static::lazy_static;
@@ -19,6 +20,7 @@ use serde::{Deserialize, Serialize};
 use snafu::{ResultExt, Snafu};
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, HashMap};
+use std::task::{Context, Poll};
 use tower::Service;
 
 pub enum Field {
@@ -291,17 +293,19 @@ fn encode_uri(
 impl Service<Vec<Metric>> for InfluxDBSvc {
     type Response = HttpResponse;
     type Error = HttpError;
-    type Future = Box<dyn Future<Item = Self::Response, Error = Self::Error> + Send + 'static>;
+    type Future =
+        Compat01As03<Box<dyn Future<Item = Self::Response, Error = Self::Error> + Send + 'static>>;
 
-    fn poll_ready(&mut self) -> Poll<(), Self::Error> {
-        self.inner.poll_ready()
+    fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        self.inner.poll_ready(cx)
     }
 
     fn call(&mut self, items: Vec<Metric>) -> Self::Future {
         let input = encode_events(items, &self.config.namespace);
         let body: Vec<u8> = input.into_bytes();
 
-        self.inner.call(body)
+        let fut = self.inner.call(body);
+        Compat01As03::new(fut)
     }
 }
 

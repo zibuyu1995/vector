@@ -15,7 +15,8 @@ use crate::{
     topology::config::{DataType, SinkConfig, SinkContext},
 };
 use bytes::Bytes;
-use futures01::{future, stream::iter_ok, sync::oneshot, Async, Future, Poll, Sink};
+use futures::compat::Compat01As03;
+use futures01::{future, stream::iter_ok, sync::oneshot, Async, Future, Sink};
 use lazy_static::lazy_static;
 use rusoto_core::{request::BufferedHttpResponse, Region, RusotoError};
 use rusoto_logs::{
@@ -24,7 +25,12 @@ use rusoto_logs::{
 };
 use serde::{Deserialize, Serialize};
 use snafu::Snafu;
-use std::{collections::HashMap, convert::TryInto, fmt};
+use std::{
+    collections::HashMap,
+    convert::TryInto,
+    fmt,
+    task::{Context, Poll},
+};
 use tower::{
     buffer::Buffer,
     limit::{
@@ -188,10 +194,11 @@ impl CloudwatchLogsPartitionSvc {
 impl Service<PartitionInnerBuffer<Vec<Event>, CloudwatchKey>> for CloudwatchLogsPartitionSvc {
     type Response = ();
     type Error = crate::Error;
-    type Future = Box<dyn Future<Item = Self::Response, Error = Self::Error> + Send + 'static>;
+    type Future =
+        Compat01As03<Box<dyn Future<Item = Self::Response, Error = Self::Error> + Send + 'static>>;
 
-    fn poll_ready(&mut self) -> Poll<(), Self::Error> {
-        Ok(().into())
+    fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        Ok(()).into()
     }
 
     fn call(&mut self, req: PartitionInnerBuffer<Vec<Event>, CloudwatchKey>) -> Self::Future {
@@ -230,7 +237,7 @@ impl Service<PartitionInnerBuffer<Vec<Event>, CloudwatchKey>> for CloudwatchLogs
             .and_then(move |mut svc| svc.call(events))
             .map_err(Into::into);
 
-        Box::new(fut)
+        Compat01As03::new(Box::new(fut))
     }
 }
 
@@ -288,9 +295,10 @@ impl CloudwatchLogsSvc {
 impl Service<Vec<Event>> for CloudwatchLogsSvc {
     type Response = ();
     type Error = CloudwatchError;
-    type Future = request::CloudwatchFuture;
+    type Future = Compat01As03<request::CloudwatchFuture>;
 
-    fn poll_ready(&mut self) -> Poll<(), Self::Error> {
+    fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        todo!("correctly map the waker here");
         if let Some(rx) = &mut self.token_rx {
             match rx.poll() {
                 Ok(Async::Ready(token)) => {
@@ -328,7 +336,7 @@ impl Service<Vec<Event>> for CloudwatchLogsSvc {
             self.token_rx = Some(rx);
 
             info!(message = "Sending events.", events = %events.len());
-            request::CloudwatchFuture::new(
+            let fut = request::CloudwatchFuture::new(
                 self.client.clone(),
                 self.stream_name.clone(),
                 self.group_name.clone(),
@@ -337,7 +345,8 @@ impl Service<Vec<Event>> for CloudwatchLogsSvc {
                 events,
                 self.token.take(),
                 tx,
-            )
+            );
+            Compat01As03::new(fut)
         } else {
             panic!("poll_ready was not called; this is a bug!");
         }

@@ -5,9 +5,10 @@ use hotmic::{
 };
 use hyper::{
     server::conn::AddrStream,
-    service::{make_service_fn, service_fn_ok},
+    service::{make_service_fn, service_fn},
     Body, Request, Response, Server,
 };
+use std::convert::Infallible;
 use std::net::SocketAddr;
 use tracing::field;
 
@@ -33,7 +34,7 @@ pub fn serve(addr: &SocketAddr, controller: Controller) -> impl Future<Item = ()
         let connection_span = info_span!("connection", addr = field::display(&connection_addr));
         let controller = controller.clone();
 
-        service_fn_ok(move |_: Request<Body>| {
+        service_fn(move |_: Request<Body>| {
             connection_span.in_scope(|| {
                 debug!(message = "snapshotting metrics.");
                 let snapshot = controller.get_snapshot().unwrap();
@@ -43,7 +44,8 @@ pub fn serve(addr: &SocketAddr, controller: Controller) -> impl Future<Item = ()
                     message = "sending metrics snapshot output.",
                     bytes = output.len()
                 );
-                Response::new(Body::from(output))
+                let res = Response::new(Body::from(output));
+                futures::future::ok::<_, Infallible>(res)
             })
         })
     });

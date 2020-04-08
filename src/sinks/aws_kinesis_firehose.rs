@@ -11,7 +11,8 @@ use crate::{
     topology::config::{DataType, SinkConfig, SinkContext, SinkDescription},
 };
 use bytes::Bytes;
-use futures01::{stream::iter_ok, Future, Poll, Sink};
+use futures::compat::Compat01As03;
+use futures01::{stream::iter_ok, Future, Sink};
 use lazy_static::lazy_static;
 use rusoto_core::{Region, RusotoError, RusotoFuture};
 use rusoto_firehose::{
@@ -20,7 +21,11 @@ use rusoto_firehose::{
 };
 use serde::{Deserialize, Serialize};
 use snafu::Snafu;
-use std::{convert::TryInto, fmt};
+use std::{
+    convert::TryInto,
+    fmt,
+    task::{Context, Poll},
+};
 use tower::Service;
 use tracing_futures::{Instrument, Instrumented};
 
@@ -115,10 +120,11 @@ impl KinesisFirehoseService {
 impl Service<Vec<Record>> for KinesisFirehoseService {
     type Response = PutRecordBatchOutput;
     type Error = RusotoError<PutRecordBatchError>;
-    type Future = Instrumented<RusotoFuture<PutRecordBatchOutput, PutRecordBatchError>>;
+    type Future =
+        Compat01As03<Instrumented<RusotoFuture<PutRecordBatchOutput, PutRecordBatchError>>>;
 
-    fn poll_ready(&mut self) -> Poll<(), Self::Error> {
-        Ok(().into())
+    fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        Ok(()).into()
     }
 
     fn call(&mut self, records: Vec<Record>) -> Self::Future {
@@ -132,9 +138,12 @@ impl Service<Vec<Record>> for KinesisFirehoseService {
             delivery_stream_name: self.config.stream_name.clone(),
         };
 
-        self.client
+        let fut = self
+            .client
             .put_record_batch(request)
-            .instrument(info_span!("request"))
+            .instrument(info_span!("request"));
+
+        Compat01As03::new(fut)
     }
 }
 

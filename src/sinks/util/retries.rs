@@ -1,11 +1,13 @@
 use super::service::Elapsed;
 use crate::Error;
-use futures01::{try_ready, Async, Future, Poll};
 use std::{
     cmp,
+    future::Future,
+    pin::Pin,
+    task::{Context, Poll},
     time::{Duration, Instant},
 };
-use tokio01::timer::Delay;
+use tokio::time::Delay;
 use tower::retry::Policy;
 
 pub enum RetryAction {
@@ -81,7 +83,7 @@ impl<L: RetryLogic> FixedRetryPolicy<L> {
         let delay = Delay::new(next);
 
         debug!(message = "retrying request.", delay_ms = %self.backoff().as_millis());
-        RetryPolicyFuture { delay, policy }
+        let fut = RetryPolicyFuture { delay, policy };
     }
 }
 
@@ -145,15 +147,11 @@ where
 }
 
 impl<L: RetryLogic> Future for RetryPolicyFuture<L> {
-    type Item = FixedRetryPolicy<L>;
-    type Error = ();
+    type Output = FixedRetryPolicy<L>;
 
-    fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-        try_ready!(self
-            .delay
-            .poll()
-            .map_err(|error| panic!("timer error: {}; this is a bug!", error)));
-        Ok(Async::Ready(self.policy.clone()))
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        futures::ready!(self.delay.poll(cx));
+        Poll::Ready(self.policy.clone())
     }
 }
 

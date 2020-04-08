@@ -301,7 +301,7 @@ mod tests {
     use bytes::Buf;
     use futures01::{sync::mpsc, Future, Sink, Stream};
     use headers::{Authorization, HeaderMapExt};
-    use hyper::service::service_fn_ok;
+    use hyper::service::service_fn;
     use hyper::{Body, Request, Response, Server};
     use serde::Deserialize;
     use std::io::{BufRead, BufReader};
@@ -415,7 +415,8 @@ mod tests {
                 );
                 body
             })
-            .map(hyper::Chunk::reader)
+            .map(|b| Vec::from(&b[..]))
+            .map(std::io::Cursor::new)
             .map(flate2::read::GzDecoder::new)
             .map(BufReader::new)
             .flat_map(BufRead::lines)
@@ -478,7 +479,8 @@ mod tests {
                 );
                 body
             })
-            .map(hyper::Chunk::reader)
+            .map(|b| Vec::from(&b[..]))
+            .map(std::io::Cursor::new)
             .map(flate2::read::GzDecoder::new)
             .map(BufReader::new)
             .flat_map(BufRead::lines)
@@ -542,7 +544,8 @@ mod tests {
                 );
                 body
             })
-            .map(hyper::Chunk::reader)
+            .map(|b| Vec::from(&b[..]))
+            .map(std::io::Cursor::new)
             .map(flate2::read::GzDecoder::new)
             .map(BufReader::new)
             .flat_map(BufRead::lines)
@@ -562,14 +565,14 @@ mod tests {
     fn build_test_server(
         addr: &std::net::SocketAddr,
     ) -> (
-        mpsc::Receiver<(http::request::Parts, hyper::Chunk)>,
+        mpsc::Receiver<(http::request::Parts, bytes05::Bytes)>,
         stream_cancel::Trigger,
         impl Future<Item = (), Error = ()>,
     ) {
         let (tx, rx) = mpsc::channel(100);
         let service = move || {
             let tx = tx.clone();
-            service_fn_ok(move |req: Request<Body>| {
+            service_fn(move |req: Request<Body>| {
                 let (parts, body) = req.into_parts();
 
                 let tx = tx.clone();
@@ -581,7 +584,8 @@ mod tests {
                         .map_err(|e| panic!(e)),
                 );
 
-                Response::new(Body::empty())
+                let res = Response::new(Body::empty());
+                futures::future::ok::<_, std::convert::Infallible>(res)
             })
         };
 

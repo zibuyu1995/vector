@@ -149,7 +149,7 @@ mod tests {
     };
     use bytes::Buf;
     use futures01::{stream, sync::mpsc, Future, Sink, Stream};
-    use hyper::service::service_fn_ok;
+    use hyper::service::service_fn;
     use hyper::{Body, Request, Response, Server};
     use serde_json::Value;
     use std::io::BufRead;
@@ -263,28 +263,27 @@ mod tests {
     fn build_test_server(
         addr: &std::net::SocketAddr,
     ) -> (
-        mpsc::Receiver<(http::request::Parts, hyper::Chunk)>,
+        mpsc::Receiver<(http::request::Parts, bytes05::Bytes)>,
         stream_cancel::Trigger,
         impl Future<Item = (), Error = ()>,
     ) {
         let (tx, rx) = mpsc::channel(100);
-        let service = move || {
+        let service = hyper::service::make_service_fn(move || {
             let tx = tx.clone();
-            service_fn_ok(move |req: Request<Body>| {
+            service_fn(move |req: Request<Body>| {
                 let (parts, body) = req.into_parts();
 
                 let tx = tx.clone();
-                tokio01::spawn(
-                    body.concat2()
-                        .map_err(|e| panic!(e))
-                        .and_then(|body| tx.send((parts, body)))
-                        .map(|_| ())
-                        .map_err(|e| panic!(e)),
-                );
 
-                Response::new(Body::empty())
+                tokio::spawn(async move {
+                    let body = hyper::body::aggregate(body).await.unwrap();
+                    tx.send((parts, body));
+                });
+
+                let res = Response::new(Body::empty());
+                futures::future::ok::<_, std::convert::Infallible>(res)
             })
-        };
+        });
 
         let (trigger, tripwire) = stream_cancel::Tripwire::new();
         let server = Server::bind(addr)
@@ -339,7 +338,8 @@ mod tests {
                 );
                 body
             })
-            .map(hyper::Chunk::reader)
+            .map(|b| Vec::from(&b[..]))
+            .map(std::io::Cursor::new)
             .flat_map(BufRead::lines)
             .map(Result::unwrap)
             .flat_map(|s| -> Vec<String> {

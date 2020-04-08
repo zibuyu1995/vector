@@ -3,14 +3,18 @@ use super::{
     Batch, BatchSettings, BatchSink,
 };
 use crate::buffers::Acker;
-use futures01::{Async, Future, Poll};
+use futures::TryFutureExt;
+use pin_project::pin_project;
 use serde::{Deserialize, Serialize};
+use std::future::Future;
+use std::pin::Pin;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::task::{Context, Poll};
+use std::time::Duration;
 use std::{error, fmt};
-use tokio01::timer::Delay;
+use tokio::time::Delay;
 use tower::{
-    layer::{util::Stack, Layer},
+    layer::{Layer, Stack},
     limit::{concurrency::ConcurrencyLimit, rate::RateLimit},
     retry::Retry,
     util::BoxService,
@@ -222,10 +226,10 @@ where
 {
     type Response = S::Response;
     type Error = crate::Error;
-    type Future = futures01::future::MapErr<S::Future, fn(S::Error) -> crate::Error>;
+    type Future = futures::future::MapErr<S::Future, fn(S::Error) -> crate::Error>;
 
-    fn poll_ready(&mut self) -> Poll<(), Self::Error> {
-        self.inner.poll_ready().map_err(Into::into)
+    fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        self.inner.poll_ready(cx).map_err(Into::into)
     }
 
     fn call(&mut self, req: R1) -> Self::Future {
@@ -268,13 +272,13 @@ where
     type Error = crate::Error;
     type Future = ResponseFuture<S::Future>;
 
-    fn poll_ready(&mut self) -> Poll<(), Self::Error> {
-        self.inner.poll_ready().map_err(Into::into)
+    fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        self.inner.poll_ready(cx).map_err(Into::into)
     }
 
     fn call(&mut self, request: Request) -> Self::Future {
         let response = self.inner.call(request);
-        let sleep = Delay::new(Instant::now() + self.timeout);
+        let sleep = tokio::time::delay_for(self.timeout);
 
         ResponseFuture { response, sleep }
     }
@@ -305,31 +309,41 @@ impl<S> Layer<S> for TimeoutLayer {
 }
 
 /// `Timeout` response future
+#[pin_project]
 #[derive(Debug)]
 pub struct ResponseFuture<T> {
+    #[pin]
     response: T,
+    #[pin]
     sleep: Delay,
 }
 
-impl<T> Future for ResponseFuture<T>
-where
-    T: Future,
-    T::Error: Into<crate::Error>,
-{
-    type Item = T::Item;
-    type Error = crate::Error;
+impl<T> ResponseFuture<T> {
+    pub(crate) fn new(response: T, sleep: Delay) -> Self {
+        ResponseFuture { response, sleep }
+    }
+}
 
-    fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
+impl<F, T, E> Future for ResponseFuture<F>
+where
+    F: Future<Output = Result<T, E>>,
+    E: Into<crate::Error>,
+{
+    type Output = Result<T, crate::Error>;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        let this = self.project();
+
         // First, try polling the future
-        match self.response.poll().map_err(Into::into)? {
-            Async::Ready(v) => return Ok(Async::Ready(v)),
-            Async::NotReady => {}
+        match this.response.poll(cx) {
+            Poll::Ready(v) => return Poll::Ready(v.map_err(Into::into)),
+            Poll::Pending => {}
         }
 
         // Now check the sleep
-        match self.sleep.poll()? {
-            Async::NotReady => Ok(Async::NotReady),
-            Async::Ready(_) => Err(Elapsed(()).into()),
+        match this.sleep.poll(cx) {
+            Poll::Pending => Poll::Pending,
+            Poll::Ready(_) => Poll::Ready(Err(Elapsed(()).into())),
         }
     }
 }
@@ -351,33 +365,3 @@ impl fmt::Display for Elapsed {
 }
 
 impl error::Error for Elapsed {}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use futures01::Future;
-    use std::sync::Arc;
-    use tokio01_test::{assert_ready, task::MockTask};
-    use tower::layer::Layer;
-    use tower_test::{assert_request_eq, mock};
-
-    #[test]
-    fn map() {
-        let mut task = MockTask::new();
-        let (mock, mut handle) = mock::pair();
-
-        let f = |r| r;
-
-        let map_layer = MapLayer { f: Arc::new(f) };
-
-        let mut svc = map_layer.layer(mock);
-
-        task.enter(|| assert_ready!(svc.poll_ready()));
-
-        let res = svc.call("hello world");
-
-        assert_request_eq!(handle, "hello world").send_response("world bye");
-
-        res.wait().unwrap();
-    }
-}

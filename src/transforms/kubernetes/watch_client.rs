@@ -4,14 +4,17 @@ use crate::{
     tls::{self, TlsOptions, TlsSettings},
 };
 use bytes::Bytes;
-use futures01::{future::Future, stream::Stream};
+use futures::{FutureExt, Stream, StreamExt, TryFutureExt, TryStream, TryStreamExt};
 use http::{header, status::StatusCode, uri, Request, Uri};
 use k8s_openapi::{
-    api::core::v1::{Pod, WatchPodForAllNamespacesResponse},
-    apimachinery::pkg::apis::meta::v1::WatchEvent,
-    RequestError, Response, ResponseError, WatchOptional,
+    api::core::v1::Pod, apimachinery::pkg::apis::meta::v1::WatchEvent, RequestError, Response,
+    ResponseError, WatchOptional, WatchResponse,
 };
-use snafu::{futures01::future::FutureExt, ResultExt, Snafu};
+use snafu::{
+    futures::{TryFutureExt as _, TryStreamExt as _},
+    futures01::future::FutureExt as _,
+    ResultExt, Snafu,
+};
 use std::{fs, io};
 use tower::Service;
 
@@ -133,7 +136,7 @@ impl WatchClient {
         &mut self,
         mut version: Option<Version>,
         error: Option<RuntimeError>,
-    ) -> Result<impl Stream<Item = (Pod, PodEvent), Error = RuntimeError>, BuildError> {
+    ) -> Result<impl TryStream<Ok = (Pod, PodEvent), Error = RuntimeError>, BuildError> {
         match error {
             None => (),
             Some(RuntimeError::WatchEventError { status }) if status.code == Some(410) => {
@@ -156,7 +159,7 @@ impl WatchClient {
     fn build_watch_stream(
         &mut self,
         request: Request<hyper::Body>,
-    ) -> impl Stream<Item = (Pod, PodEvent), Error = RuntimeError> {
+    ) -> impl TryStream<Item = (Pod, PodEvent), Error = RuntimeError> {
         let mut decoder = Decoder::default();
 
         self.client
@@ -164,7 +167,7 @@ impl WatchClient {
             .context(FailedConnecting)
             .and_then(|response| {
                 let status = response.status();
-                if status == StatusCode::OK {
+                let res = if status == StatusCode::OK {
                     // Connected succesfully
                     info!(message = "Watching for changes.");
 
@@ -173,21 +176,18 @@ impl WatchClient {
                         .map_err(|error| RuntimeError::WatchConnectionErrored { source: error }))
                 } else {
                     Err(RuntimeError::ConnectionStatusNotOK { status })
-                }
+                };
+                futures::future::ready(res)
             })
-            .flatten_stream()
+            .try_flatten_stream()
             // Process Server responses/data.
-            .map(move |chunk| decoder.decode(chunk.into_bytes()))
+            .map_ok(move |chunk| decoder.decode(bytes::Bytes::from(&chunk[..])))
             .flatten()
             // Extracts event from response
             .and_then(|response| match response {
-                WatchPodForAllNamespacesResponse::Ok(event) => Ok(event),
-                WatchPodForAllNamespacesResponse::Other(Ok(_)) => {
-                    Err(RuntimeError::WrongObjectInResponse)
-                }
-                WatchPodForAllNamespacesResponse::Other(Err(error)) => {
-                    Err(error).context(ResponseParseError)
-                }
+                WatchResponse::Ok(event) => Ok(event),
+                WatchResponse::Other(Ok(_)) => Err(RuntimeError::WrongObjectInResponse),
+                WatchResponse::Other(Err(error)) => Err(error).context(ResponseParseError),
             })
             // Extracts Pod metadata from event
             .and_then(|event| match event {
@@ -214,7 +214,7 @@ impl Decoder {
     fn decode(
         &mut self,
         chunk: Bytes,
-    ) -> impl Stream<Item = WatchPodForAllNamespacesResponse, Error = RuntimeError> {
+    ) -> impl TryStream<Ok = WatchResponse<Pod>, Error = RuntimeError> {
         // We need to process unused data as soon as we get
         // them. Because a watch on Kubernetes object behaves
         // like a never ending stream of bytes.
@@ -227,7 +227,7 @@ impl Decoder {
         // Removes used data.
         let mut decoded = Vec::new();
         loop {
-            match WatchPodForAllNamespacesResponse::try_from_parts(StatusCode::OK, &self.unused) {
+            match WatchResponse::try_from_parts(StatusCode::OK, &self.unused) {
                 Ok((response, used_bytes)) => {
                     assert!(used_bytes > 0, "Parser must consume some data");
                     // Remove used data.
@@ -248,7 +248,7 @@ impl Decoder {
         }
 
         // Returns all currently decodable watch responses.
-        futures01::stream::iter_result(decoded)
+        futures::stream::iter(decoded)
     }
 }
 

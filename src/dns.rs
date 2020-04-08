@@ -1,6 +1,6 @@
 use crate::runtime::TaskExecutor;
 use futures01::{future, Future};
-use hyper::client::connect::dns::{Name, Resolve};
+use hyper::client::connect::dns::Name;
 use snafu::{futures01::FutureExt, ResultExt};
 use std::{
     fmt,
@@ -105,18 +105,19 @@ impl Iterator for LookupIp {
     }
 }
 
-impl Resolve for Resolver {
-    type Addrs = LookupIp;
-    type Future = Box<dyn Future<Item = Self::Addrs, Error = std::io::Error> + Send + 'static>;
+// TODO: convert to Service<Name>
+// impl Resolve for Resolver {
+//     type Addrs = LookupIp;
+//     type Future = Box<dyn Future<Item = Self::Addrs, Error = std::io::Error> + Send + 'static>;
 
-    fn resolve(&self, name: Name) -> Self::Future {
-        let fut = self.lookup_ip(name.as_str()).map_err(|e| {
-            use std::io;
-            io::Error::new(io::ErrorKind::Other, e)
-        });
-        Box::new(fut)
-    }
-}
+//     fn resolve(&self, name: Name) -> Self::Future {
+//         let fut = self.lookup_ip(name.as_str()).map_err(|e| {
+//             use std::io;
+//             io::Error::new(io::ErrorKind::Other, e)
+//         });
+//         Box::new(fut)
+//     }
+// }
 
 #[derive(Debug, snafu::Snafu)]
 pub enum DnsError {

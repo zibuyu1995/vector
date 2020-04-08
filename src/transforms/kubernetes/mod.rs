@@ -208,8 +208,7 @@ impl MetadataClient {
             let mut watcher = self
                 .client
                 .watch_metadata(version.clone(), error.take())
-                .context(WatchStreamBuild)?
-                .compat();
+                .context(WatchStreamBuild)?;
             info!("Watching Pod metadata.");
 
             // Watch loop
@@ -305,7 +304,7 @@ impl MetadataClient {
     }
 }
 
-#[derive(PartialEq, Debug, Clone)]
+#[derive(PartialEq, Debug, Clone, Hash)]
 struct FieldValue(Value);
 
 // Since we aren't using Eq feature in the evmap, we can impl Eq.

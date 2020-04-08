@@ -14,7 +14,8 @@ use crate::{
 };
 use bytes::Bytes;
 use chrono::Utc;
-use futures01::{stream::iter_ok, Future, Poll, Sink};
+use futures::compat::Compat01As03;
+use futures01::{stream::iter_ok, Future, Sink};
 use lazy_static::lazy_static;
 use rusoto_core::{Region, RusotoError, RusotoFuture};
 use rusoto_s3::{
@@ -24,6 +25,7 @@ use serde::{Deserialize, Serialize};
 use snafu::Snafu;
 use std::collections::BTreeMap;
 use std::convert::TryInto;
+use std::task::{Context, Poll};
 use tower::{Service, ServiceBuilder};
 use tracing::field;
 use tracing_futures::{Instrument, Instrumented};
@@ -273,10 +275,10 @@ impl S3Sink {
 impl Service<Request> for S3Sink {
     type Response = PutObjectOutput;
     type Error = RusotoError<PutObjectError>;
-    type Future = Instrumented<RusotoFuture<PutObjectOutput, PutObjectError>>;
+    type Future = Compat01As03<Instrumented<RusotoFuture<PutObjectOutput, PutObjectError>>>;
 
-    fn poll_ready(&mut self) -> Poll<(), Self::Error> {
-        Ok(().into())
+    fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        Ok(()).into()
     }
 
     fn call(&mut self, request: Request) -> Self::Future {
@@ -288,7 +290,8 @@ impl Service<Request> for S3Sink {
             }
         }
         let tagging = tagging.finish();
-        self.client
+        let fut = self
+            .client
             .put_object(PutObjectRequest {
                 body: Some(request.body.into()),
                 bucket: request.bucket,
@@ -305,7 +308,9 @@ impl Service<Request> for S3Sink {
                 tagging: Some(tagging),
                 ..Default::default()
             })
-            .instrument(info_span!("request"))
+            .instrument(info_span!("request"));
+
+        Compat01As03::new(fut)
     }
 }
 

@@ -5,11 +5,13 @@ use crate::{
     sinks::util::{BatchBytesConfig, BatchSink, Buffer},
     topology::config::{DataType, SinkConfig, SinkContext, SinkDescription},
 };
-use futures01::{future, stream::iter_ok, Future, Poll, Sink};
+use futures::compat::Compat01As03;
+use futures01::{future, stream::iter_ok, Future, Sink};
 use serde::{Deserialize, Serialize};
 use snafu::{ResultExt, Snafu};
 use std::collections::BTreeMap;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, UdpSocket};
+use std::task::{Context, Poll};
 use tower::{Service, ServiceBuilder};
 
 #[derive(Debug, Snafu)]
@@ -193,10 +195,11 @@ fn encode_event(event: Event, namespace: &str) -> Option<Vec<u8>> {
 impl Service<Vec<u8>> for StatsdSvc {
     type Response = ();
     type Error = tokio01::io::Error;
-    type Future = Box<dyn Future<Item = Self::Response, Error = Self::Error> + Send + 'static>;
+    type Future =
+        Compat01As03<Box<dyn Future<Item = Self::Response, Error = Self::Error> + Send + 'static>>;
 
-    fn poll_ready(&mut self) -> Poll<(), Self::Error> {
-        Ok(().into())
+    fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        Ok(()).into()
     }
 
     fn call(&mut self, mut frame: Vec<u8>) -> Self::Future {
@@ -205,7 +208,7 @@ impl Service<Vec<u8>> for StatsdSvc {
             frame.pop();
         };
         self.client.send(frame.as_ref());
-        Box::new(future::ok(()))
+        Compat01As03::new(Box::new(future::ok(())))
     }
 }
 

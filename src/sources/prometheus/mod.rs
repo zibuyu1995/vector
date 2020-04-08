@@ -93,7 +93,7 @@ mod test {
         test_util::{block_on, next_addr, runtime},
         topology::{self, config},
     };
-    use hyper::service::{make_service_fn, service_fn_ok};
+    use hyper::service::{make_service_fn, service_fn};
     use hyper::{Body, Response, Server};
     use pretty_assertions::assert_eq;
     use std::{thread, time::Duration};
@@ -105,8 +105,8 @@ mod test {
         let out_addr = next_addr();
 
         let make_svc = make_service_fn(|_| {
-            service_fn_ok(move |_| {
-                Response::new(Body::from(
+            service_fn(move |_| {
+                let res = Response::new(Body::from(
                     r##"
                     # HELP promhttp_metric_handler_requests_total Total number of scrapes by HTTP status code.
                     # TYPE promhttp_metric_handler_requests_total counter
@@ -135,7 +135,8 @@ mod test {
                     rpc_duration_seconds_sum{code="200"} 1.7560473e+07
                     rpc_duration_seconds_count{code="200"} 2693
                     "##,
-                ))
+                ));
+                futures::future::ok::<_, std::convert::Infallible>(res)
             })
         });
 

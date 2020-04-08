@@ -11,7 +11,8 @@ use crate::{
     topology::config::{DataType, SinkConfig, SinkContext, SinkDescription},
 };
 use bytes::Bytes;
-use futures01::{stream::iter_ok, Future, Poll, Sink};
+use futures::compat::Compat01As03;
+use futures01::{stream::iter_ok, Future, Sink};
 use lazy_static::lazy_static;
 use rand::random;
 use rusoto_core::{Region, RusotoError, RusotoFuture};
@@ -21,7 +22,12 @@ use rusoto_kinesis::{
 };
 use serde::{Deserialize, Serialize};
 use snafu::Snafu;
-use std::{convert::TryInto, fmt, sync::Arc};
+use std::{
+    convert::TryInto,
+    fmt,
+    sync::Arc,
+    task::{Context, Poll},
+};
 use string_cache::DefaultAtom as Atom;
 use tower::Service;
 use tracing_futures::{Instrument, Instrumented};
@@ -113,10 +119,10 @@ impl KinesisService {
 impl Service<Vec<PutRecordsRequestEntry>> for KinesisService {
     type Response = PutRecordsOutput;
     type Error = RusotoError<PutRecordsError>;
-    type Future = Instrumented<RusotoFuture<PutRecordsOutput, PutRecordsError>>;
+    type Future = Compat01As03<Instrumented<RusotoFuture<PutRecordsOutput, PutRecordsError>>>;
 
-    fn poll_ready(&mut self) -> Poll<(), Self::Error> {
-        Ok(().into())
+    fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        Ok(()).into()
     }
 
     fn call(&mut self, records: Vec<PutRecordsRequestEntry>) -> Self::Future {

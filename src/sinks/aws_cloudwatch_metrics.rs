@@ -10,7 +10,8 @@ use crate::{
     topology::config::{DataType, SinkConfig, SinkContext, SinkDescription},
 };
 use chrono::{DateTime, SecondsFormat, Utc};
-use futures01::{Future, Poll, Sink};
+use futures::compat::Compat01As03;
+use futures01::{Future, Sink};
 use lazy_static::lazy_static;
 use rusoto_cloudwatch::{
     CloudWatch, CloudWatchClient, Dimension, MetricDatum, PutMetricDataError, PutMetricDataInput,
@@ -19,6 +20,7 @@ use rusoto_core::{Region, RusotoError, RusotoFuture};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::convert::TryInto;
+use std::task::{Context, Poll};
 use tower::Service;
 
 #[derive(Clone)]
@@ -209,10 +211,10 @@ impl CloudWatchMetricsSvc {
 impl Service<Vec<Metric>> for CloudWatchMetricsSvc {
     type Response = ();
     type Error = RusotoError<PutMetricDataError>;
-    type Future = RusotoFuture<(), PutMetricDataError>;
+    type Future = Compat01As03<RusotoFuture<(), PutMetricDataError>>;
 
-    fn poll_ready(&mut self) -> Poll<(), Self::Error> {
-        Ok(().into())
+    fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        Ok(()).into()
     }
 
     fn call(&mut self, items: Vec<Metric>) -> Self::Future {
@@ -220,7 +222,8 @@ impl Service<Vec<Metric>> for CloudWatchMetricsSvc {
 
         if !input.metric_data.is_empty() {
             debug!(message = "sending data.", ?input);
-            self.client.put_metric_data(input)
+            let fut = self.client.put_metric_data(input);
+            Compat01As03::new(fut)
         } else {
             Ok(()).into()
         }

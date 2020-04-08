@@ -3,7 +3,7 @@ use crate::{
     topology::config::{SinkConfig, SinkContext},
 };
 use futures01::{sync::mpsc, Future, Sink, Stream};
-use hyper::{service::service_fn_ok, Body, Request, Response, Server};
+use hyper::{service::service_fn, Body, Request, Response, Server};
 use serde::Deserialize;
 
 pub fn load_sink<T>(config: &str) -> crate::Result<(T, SinkContext, Runtime)>
@@ -20,14 +20,14 @@ where
 pub fn build_test_server(
     addr: &std::net::SocketAddr,
 ) -> (
-    mpsc::Receiver<(http::request::Parts, hyper::Chunk)>,
+    mpsc::Receiver<(http::request::Parts, bytes05::Bytes)>,
     stream_cancel::Trigger,
     impl Future<Item = (), Error = ()>,
 ) {
     let (tx, rx) = mpsc::channel(100);
     let service = move || {
         let tx = tx.clone();
-        service_fn_ok(move |req: Request<Body>| {
+        service_fn(move |req: Request<Body>| {
             let (parts, body) = req.into_parts();
 
             let tx = tx.clone();
@@ -39,7 +39,8 @@ pub fn build_test_server(
                     .map_err(|e| panic!(e)),
             );
 
-            Response::new(Body::empty())
+            let res = Response::new(Body::empty());
+            futures::future::ok::<_, std::convert::Infallible>(res)
         })
     };
 
