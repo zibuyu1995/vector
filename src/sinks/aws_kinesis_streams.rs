@@ -136,9 +136,12 @@ impl Service<Vec<PutRecordsRequestEntry>> for KinesisService {
             stream_name: self.config.stream_name.clone(),
         };
 
-        self.client
+        let fut = self
+            .client
             .put_records(request)
-            .instrument(info_span!("request"))
+            .instrument(info_span!("request"));
+
+        Compat01As03::new(fut)
     }
 }
 

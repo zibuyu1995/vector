@@ -1,3 +1,4 @@
+use futures::{FutureExt, TryFutureExt};
 use futures01::Future;
 use hotmic::{
     snapshot::{Snapshot, TypedMeasurement},
@@ -34,24 +35,28 @@ pub fn serve(addr: &SocketAddr, controller: Controller) -> impl Future<Item = ()
         let connection_span = info_span!("connection", addr = field::display(&connection_addr));
         let controller = controller.clone();
 
-        service_fn(move |_: Request<Body>| {
-            connection_span.in_scope(|| {
-                debug!(message = "snapshotting metrics.");
-                let snapshot = controller.get_snapshot().unwrap();
-                let output = process_snapshot(snapshot).unwrap();
+        async move {
+            Ok::<_, Infallible>(service_fn(move |_: Request<Body>| {
+                connection_span.in_scope(|| {
+                    debug!(message = "snapshotting metrics.");
+                    let snapshot = controller.get_snapshot().unwrap();
+                    let output = process_snapshot(snapshot).unwrap();
 
-                trace!(
-                    message = "sending metrics snapshot output.",
-                    bytes = output.len()
-                );
-                let res = Response::new(Body::from(output));
-                futures::future::ok::<_, Infallible>(res)
-            })
-        })
+                    trace!(
+                        message = "sending metrics snapshot output.",
+                        bytes = output.len()
+                    );
+                    let res = Response::new(Body::from(output));
+                    futures::future::ok::<_, Infallible>(res)
+                })
+            }))
+        }
     });
 
     Server::bind(&addr)
         .serve(make_svc)
+        .boxed()
+        .compat()
         .map_err(|e| error!("metrics server error: {}", e))
 }
 

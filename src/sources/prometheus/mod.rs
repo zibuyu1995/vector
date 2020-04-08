@@ -1,4 +1,6 @@
 use crate::{shutdown::ShutdownSignal, topology::config::GlobalOptions, Event};
+use bytes05::Buf;
+use futures::{FutureExt, TryFutureExt};
 use futures01::{sync::mpsc, Future, Sink, Stream};
 use http::Uri;
 use hyper;
@@ -55,7 +57,7 @@ fn prometheus(urls: Vec<String>, interval: u64, out: mpsc::Sender<Event>) -> sup
         .map(move |_| futures01::stream::iter_ok(urls.clone()))
         .flatten()
         .map(move |url| {
-            let https = HttpsConnector::new(4).expect("TLS initialization failed");
+            let https = HttpsConnector::new().expect("TLS initialization failed");
             let client = hyper::Client::builder().build(https);
 
             let request = hyper::Request::get(&url)
@@ -64,9 +66,11 @@ fn prometheus(urls: Vec<String>, interval: u64, out: mpsc::Sender<Event>) -> sup
 
             client
                 .request(request)
-                .and_then(|response| response.into_body().concat2())
+                .and_then(|response| hyper::body::aggregate(response.into_body()))
+                .boxed()
+                .compat()
                 .map(|body| {
-                    let packet = String::from_utf8_lossy(&body);
+                    let packet = String::from_utf8_lossy(&body.bytes());
                     let metrics = parser::parse(&packet)
                         .map_err(|e| error!("parsing error: {:?}", e))
                         .unwrap_or_default()
@@ -105,7 +109,7 @@ mod test {
         let out_addr = next_addr();
 
         let make_svc = make_service_fn(|_| {
-            service_fn(move |_| {
+            let svc = service_fn(move |_| {
                 let res = Response::new(Body::from(
                     r##"
                     # HELP promhttp_metric_handler_requests_total Total number of scrapes by HTTP status code.
@@ -137,13 +141,20 @@ mod test {
                     "##,
                 ));
                 futures::future::ok::<_, std::convert::Infallible>(res)
-            })
+            });
+
+            futures::future::ok::<_, std::convert::Infallible>(svc)
         });
 
         let server = Server::bind(&in_addr).serve(make_svc);
-        rt.spawn(server.map_err(|e| {
-            error!("server error: {:?}", e);
-        }));
+        use futures::{FutureExt, TryFutureExt};
+        rt.spawn_std(
+            server
+                .map_err(|e| {
+                    error!("server error: {:?}", e);
+                })
+                .map(drop),
+        );
 
         let mut config = config::Config::empty();
         config.add_source(
@@ -168,12 +179,16 @@ mod test {
         thread::sleep(Duration::from_secs(1));
 
         let client = hyper::Client::new();
-        let response =
-            block_on(client.get(format!("http://{}/metrics", out_addr).parse().unwrap())).unwrap();
+        let response = rt
+            .block_on_std(client.get(format!("http://{}/metrics", out_addr).parse().unwrap()))
+            .unwrap();
         assert!(response.status().is_success());
 
-        let body = block_on(response.into_body().concat2()).unwrap();
-        let lines = std::str::from_utf8(&body)
+        let body = rt
+            .block_on_std(hyper::body::aggregate(response.into_body()))
+            .unwrap();
+        use bytes05::Buf;
+        let lines = std::str::from_utf8(&body.bytes())
             .unwrap()
             .lines()
             .collect::<Vec<_>>();

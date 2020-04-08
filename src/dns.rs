@@ -1,4 +1,5 @@
 use crate::runtime::TaskExecutor;
+use futures::{compat::Future01CompatExt, future::BoxFuture};
 use futures01::{future, Future};
 use hyper::client::connect::dns::Name;
 use snafu::{futures01::FutureExt, ResultExt};
@@ -6,7 +7,9 @@ use std::{
     fmt,
     net::{IpAddr, SocketAddr},
     str::FromStr,
+    task::{Context, Poll},
 };
+use tower::Service;
 use trust_dns_resolver::{
     config::{LookupIpStrategy, NameServerConfig, Protocol, ResolverConfig, ResolverOpts},
     lookup_ip::LookupIpIntoIter,
@@ -105,19 +108,25 @@ impl Iterator for LookupIp {
     }
 }
 
-// TODO: convert to Service<Name>
-// impl Resolve for Resolver {
-//     type Addrs = LookupIp;
-//     type Future = Box<dyn Future<Item = Self::Addrs, Error = std::io::Error> + Send + 'static>;
+impl Service<Name> for Resolver {
+    type Response = LookupIp;
+    type Error = std::io::Error;
+    type Future = BoxFuture<'static, Result<Self::Response, Self::Error>>;
 
-//     fn resolve(&self, name: Name) -> Self::Future {
-//         let fut = self.lookup_ip(name.as_str()).map_err(|e| {
-//             use std::io;
-//             io::Error::new(io::ErrorKind::Other, e)
-//         });
-//         Box::new(fut)
-//     }
-// }
+    fn poll_ready(&mut self, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        Ok(()).into()
+    }
+
+    fn call(&mut self, name: Name) -> Self::Future {
+        let fut = self.lookup_ip(name.as_str()).map_err(|e| {
+            use std::io;
+            io::Error::new(io::ErrorKind::Other, e)
+        });
+
+        let fut = fut.compat();
+        Box::pin(fut)
+    }
+}
 
 #[derive(Debug, snafu::Snafu)]
 pub enum DnsError {

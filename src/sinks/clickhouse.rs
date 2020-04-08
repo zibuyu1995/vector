@@ -10,6 +10,7 @@ use crate::{
     tls::{TlsOptions, TlsSettings},
     topology::config::{DataType, SinkConfig, SinkContext, SinkDescription},
 };
+use futures::{FutureExt, TryFutureExt};
 use futures01::{Future, Sink};
 use http::StatusCode;
 use http::{Method, Uri};
@@ -149,6 +150,8 @@ fn healthcheck(resolver: Resolver, config: &ClickhouseConfig) -> crate::Result<s
     let mut client = HttpClient::new(resolver, tls)?;
     let healthcheck = client
         .call(request)
+        .boxed()
+        .compat()
         .map_err(|err| err.into())
         .and_then(|response| match response.status() {
             hyper::StatusCode::OK => Ok(()),

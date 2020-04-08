@@ -9,8 +9,8 @@ use crate::{
     tls::{TlsOptions, TlsSettings},
     topology::config::{DataType, SinkConfig, SinkContext, SinkDescription},
 };
-use bytes::Bytes;
-use futures01::{Future, Sink};
+use futures::{FutureExt, TryFutureExt};
+use futures01::Sink;
 use http::{Method, Request, StatusCode, Uri};
 use hyper::Body;
 use lazy_static::lazy_static;
@@ -79,7 +79,7 @@ inventory::submit! {
 impl SinkConfig for HecSinkConfig {
     fn build(&self, cx: SinkContext) -> crate::Result<(super::RouterSink, super::Healthcheck)> {
         validate_host(&self.host)?;
-        let healthcheck = healthcheck(&self, cx.resolver())?;
+        let healthcheck = healthcheck(self.clone(), cx.resolver());
 
         let batch = self.batch.unwrap_or(bytesize::mib(1u64), 1);
         let request = self.request.unwrap_with(&REQUEST_DEFAULTS);
@@ -95,7 +95,7 @@ impl SinkConfig for HecSinkConfig {
         )
         .sink_map_err(|e| error!("Fatal splunk_hec sink error: {}", e));
 
-        Ok((Box::new(sink), healthcheck))
+        Ok((Box::new(sink), Box::new(healthcheck.boxed().compat())))
     }
 
     fn input_type(&self) -> DataType {
@@ -152,8 +152,6 @@ impl HttpSink for HecSinkConfig {
             .parse::<Uri>()
             .expect("Unable to parse URI");
 
-        let token = Bytes::from(format!("Splunk {}", self.token));
-
         let mut builder = Request::builder();
         builder.method(Method::POST);
         builder.uri(uri.clone());
@@ -164,7 +162,7 @@ impl HttpSink for HecSinkConfig {
             builder.header("Content-Encoding", "gzip");
         }
 
-        builder.header("Authorization", token.clone());
+        builder.header("Authorization", format!("Splunk {}", self.token));
 
         builder.body(events).unwrap()
     }
@@ -184,10 +182,7 @@ enum HealthcheckError {
     QueuesFull,
 }
 
-pub fn healthcheck(
-    config: &HecSinkConfig,
-    resolver: Resolver,
-) -> crate::Result<super::Healthcheck> {
+pub async fn healthcheck(config: HecSinkConfig, resolver: Resolver) -> crate::Result<()> {
     let uri = format!("{}/services/collector/health/1.0", config.host)
         .parse::<Uri>()
         .context(super::UriParseError)?;
@@ -200,23 +195,20 @@ pub fn healthcheck(
     let tls = TlsSettings::from_options(&config.tls)?;
     let mut client = HttpClient::new(resolver, tls)?;
 
-    let healthcheck = client
-        .call(request)
-        .map_err(|err| err.into())
-        .and_then(|response| match response.status() {
-            StatusCode::OK => Ok(()),
-            StatusCode::BAD_REQUEST => Err(HealthcheckError::InvalidToken.into()),
-            StatusCode::SERVICE_UNAVAILABLE => Err(HealthcheckError::QueuesFull.into()),
-            other => Err(super::HealthcheckError::UnexpectedStatus { status: other }.into()),
-        });
+    let response = client.call(request).await?;
 
-    Ok(Box::new(healthcheck))
+    match response.status() {
+        StatusCode::OK => Ok(()),
+        StatusCode::BAD_REQUEST => Err(HealthcheckError::InvalidToken.into()),
+        StatusCode::SERVICE_UNAVAILABLE => Err(HealthcheckError::QueuesFull.into()),
+        other => Err(super::HealthcheckError::UnexpectedStatus { status: other }.into()),
+    }
 }
 
 pub fn validate_host(host: &str) -> crate::Result<()> {
     let uri = Uri::try_from(host).context(super::UriParseError)?;
 
-    match uri.scheme_part() {
+    match uri.scheme() {
         Some(_) => Ok(()),
         None => Err(Box::new(BuildError::UriMissingScheme)),
     }

@@ -173,7 +173,8 @@ pub struct HttpClient<B = Body> {
 impl<B> HttpClient<B>
 where
     B: HttpBody + Send + 'static,
-    B::Data: Send,
+    B::Data: Send + 'static,
+    B::Error: Into<crate::Error> + Send + 'static,
 {
     pub fn new(
         resolver: Resolver,
@@ -195,9 +196,7 @@ where
             Ok(())
         });
 
-        let client = hyper::Client::builder()
-            .executor(DefaultExecutor::current())
-            .build(https);
+        let client = hyper::Client::builder().build(https);
 
         let version = crate::get_version();
         let user_agent = HeaderValue::from_str(&format!("Vector/{}", version))
@@ -220,7 +219,8 @@ where
 impl<B> Service<Request<B>> for HttpClient<B>
 where
     B: HttpBody + Send + 'static,
-    B::Data: Send,
+    B::Data: Send + 'static,
+    B::Error: Into<crate::Error> + Send + 'static,
 {
     type Response = http::Response<Body>;
     type Error = Error;
@@ -241,19 +241,19 @@ where
 
         debug!(message = "sending request.", uri = %request.uri(), method = %request.method());
 
-        let fut = self
-            .client
-            .request(request)
-            .inspect(|res| {
-                debug!(
-                    message = "response.",
-                    status = ?res.status(),
-                    version = ?res.version(),
-                )
-            })
-            .instrument(self.span.clone());
+        let fut = self.client.request(request);
+        let fut = async move {
+            let res = fut.await?;
+            debug!(
+                message = "response.",
+                status = ?res.status(),
+                version = ?res.version(),
+            );
+            Ok(res)
+        }
+        .instrument(self.span.clone());
 
-        Box::new(fut)
+        Box::pin(fut)
     }
 }
 
@@ -303,17 +303,22 @@ impl<B> Service<B> for HttpBatchService<B> {
     type Error = Error;
     type Future = BoxFuture<'static, Result<Self::Response, Self::Error>>;
 
-    fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<(), Self::Error> {
-        Ok(().into())
+    fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll03<Result<(), Self::Error>> {
+        Ok(()).into()
     }
 
     fn call(&mut self, body: B) -> Self::Future {
         let request = (self.request_builder)(body).map(Body::from);
-        let fut = self.inner.call(request).and_then(|r| {
-            let (parts, body) = r.into_parts();
-            body.concat2()
-                .map(|b| hyper::Response::from_parts(parts, b.into_bytes()))
-        });
+
+        let fut = self.inner.call(request);
+        let fut = async move {
+            let res = fut.await?;
+            let (parts, body) = res.into_parts();
+            let body = hyper::body::aggregate(body).await?;
+            use bytes05::Buf;
+            let body = Bytes::from(body.bytes());
+            Ok(hyper::Response::from_parts(parts, body))
+        };
 
         Box::pin(fut)
     }
@@ -415,37 +420,44 @@ mod test {
 
         let (tx, rx) = futures01::sync::mpsc::channel(10);
 
-        let new_service = move || {
+        let new_service = hyper::service::make_service_fn(move |_| {
             let tx = tx.clone();
 
-            service_fn(move |req: hyper::Request<Body>| -> Box<dyn Future<Item = Response<Body>, Error = String> + Send> {
+            let svc = service_fn(move |req: hyper::Request<Body>| {
                 let tx = tx.clone();
 
-                Box::new(req.into_body().map_err(|_| "".to_string()).fold::<_, _, Result<_, String>>(vec![], |mut acc, chunk| {
-                    acc.extend_from_slice(&chunk);
-                    Ok(acc)
-                }).and_then(move |v| {
-                    let string = String::from_utf8(v).map_err(|_| "Wasn't UTF-8".to_string());
-                    tx.send(string).map_err(|_| "Send error".to_string())
-                }).and_then(|_| {
-                    futures01::future::ok(Response::new(Body::from("")))
-                }))
-            })
-        };
+                async move {
+                    let body = hyper::body::aggregate(req.into_body()).await?;
+                    use bytes05::Buf;
+                    let string = String::from_utf8(Vec::from(body.bytes()))
+                        .map_err(|_| "Wasn't UTF-8".to_string())?;
+                    use futures::compat::Future01CompatExt;
+                    tx.send(string)
+                        .map_err(|_| "Send error".to_string())
+                        .compat()
+                        .await?;
+                    Ok::<_, crate::Error>(Response::new(Body::from("")))
+                }
+            });
 
+            async move { Ok::<_, std::convert::Infallible>(svc) }
+        });
+
+        use futures::{FutureExt, TryFutureExt};
         let server = Server::bind(&addr)
             .serve(new_service)
-            .map_err(|e| eprintln!("server error: {}", e));
+            .map_err(|e| eprintln!("server error: {}", e))
+            .map(drop);
 
         let mut rt = crate::runtime::Runtime::new().unwrap();
 
-        rt.spawn(server);
+        rt.spawn_std(server);
 
-        rt.block_on(req).unwrap();
+        rt.block_on_std(req).unwrap();
 
         let _ = rt.shutdown_now();
 
         let (body, _rest) = rx.into_future().wait().unwrap();
-        assert_eq!(body.unwrap().unwrap(), "hello");
+        assert_eq!(body.unwrap(), "hello");
     }
 }

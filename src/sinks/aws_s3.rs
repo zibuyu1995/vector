@@ -164,7 +164,7 @@ enum HealthcheckError {
     #[snafu(display("Unknown bucket: {:?}", bucket))]
     UnknownBucket { bucket: String },
     #[snafu(display("Unknown status code: {}", status))]
-    UnknownStatus { status: http::StatusCode },
+    UnknownStatus { status: http01::StatusCode },
 }
 
 impl S3Sink {
@@ -239,8 +239,10 @@ impl S3Sink {
         let bucket = config.bucket.clone();
         let healthcheck = response.map_err(|err| match err {
             RusotoError::Unknown(response) => match response.status {
-                http::status::StatusCode::FORBIDDEN => HealthcheckError::InvalidCredentials.into(),
-                http::status::StatusCode::NOT_FOUND => {
+                http01::status::StatusCode::FORBIDDEN => {
+                    HealthcheckError::InvalidCredentials.into()
+                }
+                http01::status::StatusCode::NOT_FOUND => {
                     HealthcheckError::UnknownBucket { bucket }.into()
                 }
                 status => HealthcheckError::UnknownStatus { status }.into(),

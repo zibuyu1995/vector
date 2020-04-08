@@ -10,7 +10,7 @@ use crate::{
     topology::config::{DataType, SinkConfig, SinkContext, SinkDescription},
 };
 use chrono::{DateTime, SecondsFormat, Utc};
-use futures::compat::Compat01As03;
+use futures::{compat::Compat01As03, future::BoxFuture};
 use futures01::{Future, Sink};
 use lazy_static::lazy_static;
 use rusoto_cloudwatch::{
@@ -211,7 +211,7 @@ impl CloudWatchMetricsSvc {
 impl Service<Vec<Metric>> for CloudWatchMetricsSvc {
     type Response = ();
     type Error = RusotoError<PutMetricDataError>;
-    type Future = Compat01As03<RusotoFuture<(), PutMetricDataError>>;
+    type Future = BoxFuture<'static, Result<Self::Response, Self::Error>>;
 
     fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         Ok(()).into()
@@ -223,9 +223,9 @@ impl Service<Vec<Metric>> for CloudWatchMetricsSvc {
         if !input.metric_data.is_empty() {
             debug!(message = "sending data.", ?input);
             let fut = self.client.put_metric_data(input);
-            Compat01As03::new(fut)
+            Box::pin(Compat01As03::new(fut))
         } else {
-            Ok(()).into()
+            Box::pin(async move { Ok(()) })
         }
     }
 }
@@ -243,7 +243,7 @@ impl RetryLogic for CloudWatchMetricsRetryLogic {
             RusotoError::Service(PutMetricDataError::InternalServiceFault(_)) => true,
             RusotoError::Unknown(res)
                 if res.status.is_server_error()
-                    || res.status == http::StatusCode::TOO_MANY_REQUESTS =>
+                    || res.status == http01::StatusCode::TOO_MANY_REQUESTS =>
             {
                 true
             }

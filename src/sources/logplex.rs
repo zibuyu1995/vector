@@ -162,7 +162,7 @@ mod tests {
     };
     use chrono::{DateTime, Utc};
     use futures01::sync::mpsc;
-    use http::Method;
+    use http01::Method;
     use pretty_assertions::assert_eq;
     use std::net::SocketAddr;
 

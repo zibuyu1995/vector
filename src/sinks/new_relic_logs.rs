@@ -144,13 +144,12 @@ mod tests {
     use crate::{
         event::Event,
         runtime::Runtime,
+        sinks::util::test::build_test_server,
         test_util::{next_addr, shutdown_on_idle},
         topology::config::SinkConfig,
     };
-    use bytes::Buf;
-    use futures01::{stream, sync::mpsc, Future, Sink, Stream};
-    use hyper::service::service_fn;
-    use hyper::{Body, Request, Response, Server};
+    use futures01::{stream, Sink, Stream};
+
     use serde_json::Value;
     use std::io::BufRead;
 
@@ -258,40 +257,6 @@ mod tests {
         );
         assert!(http_config.tls.is_none());
         assert!(http_config.auth.is_none());
-    }
-
-    fn build_test_server(
-        addr: &std::net::SocketAddr,
-    ) -> (
-        mpsc::Receiver<(http::request::Parts, bytes05::Bytes)>,
-        stream_cancel::Trigger,
-        impl Future<Item = (), Error = ()>,
-    ) {
-        let (tx, rx) = mpsc::channel(100);
-        let service = hyper::service::make_service_fn(move || {
-            let tx = tx.clone();
-            service_fn(move |req: Request<Body>| {
-                let (parts, body) = req.into_parts();
-
-                let tx = tx.clone();
-
-                tokio::spawn(async move {
-                    let body = hyper::body::aggregate(body).await.unwrap();
-                    tx.send((parts, body));
-                });
-
-                let res = Response::new(Body::empty());
-                futures::future::ok::<_, std::convert::Infallible>(res)
-            })
-        });
-
-        let (trigger, tripwire) = stream_cancel::Tripwire::new();
-        let server = Server::bind(addr)
-            .serve(service)
-            .with_graceful_shutdown(tripwire)
-            .map_err(|e| panic!("server error: {}", e));
-
-        (rx, trigger, server)
     }
 
     #[test]

@@ -79,10 +79,9 @@ mod test {
     use super::StatsdConfig;
     use crate::{
         sinks::prometheus::PrometheusSinkConfig,
-        test_util::{block_on, next_addr, runtime, shutdown_on_idle},
+        test_util::{next_addr, runtime, shutdown_on_idle},
         topology::{self, config},
     };
-    use futures01::Stream;
     use std::{thread, time::Duration};
 
     fn parse_count(lines: &Vec<&str>, prefix: &str) -> usize {
@@ -135,12 +134,16 @@ mod test {
         thread::sleep(Duration::from_millis(100));
 
         let client = hyper::Client::new();
-        let response =
-            block_on(client.get(format!("http://{}/metrics", out_addr).parse().unwrap())).unwrap();
+        let response = rt
+            .block_on_std(client.get(format!("http://{}/metrics", out_addr).parse().unwrap()))
+            .unwrap();
         assert!(response.status().is_success());
 
-        let body = block_on(response.into_body().concat2()).unwrap();
-        let lines = std::str::from_utf8(&body)
+        let body = rt
+            .block_on_std(hyper::body::aggregate(response.into_body()))
+            .unwrap();
+        use bytes05::Buf;
+        let lines = std::str::from_utf8(&body.bytes())
             .unwrap()
             .lines()
             .collect::<Vec<_>>();
@@ -180,13 +183,16 @@ mod test {
             // Wait for flush to happen
             thread::sleep(Duration::from_millis(2000));
 
-            let response =
-                block_on(client.get(format!("http://{}/metrics", out_addr).parse().unwrap()))
-                    .unwrap();
+            let response = rt
+                .block_on_std(client.get(format!("http://{}/metrics", out_addr).parse().unwrap()))
+                .unwrap();
             assert!(response.status().is_success());
 
-            let body = block_on(response.into_body().concat2()).unwrap();
-            let lines = std::str::from_utf8(&body)
+            let body = rt
+                .block_on_std(hyper::body::aggregate(response.into_body()))
+                .unwrap();
+            use bytes05::Buf;
+            let lines = std::str::from_utf8(&body.bytes())
                 .unwrap()
                 .lines()
                 .collect::<Vec<_>>();
@@ -202,13 +208,15 @@ mod test {
             // Give packets some time to flow through
             thread::sleep(Duration::from_millis(100));
 
-            let response =
-                block_on(client.get(format!("http://{}/metrics", out_addr).parse().unwrap()))
-                    .unwrap();
+            let response = rt
+                .block_on_std(client.get(format!("http://{}/metrics", out_addr).parse().unwrap()))
+                .unwrap();
             assert!(response.status().is_success());
 
-            let body = block_on(response.into_body().concat2()).unwrap();
-            let lines = std::str::from_utf8(&body)
+            let body = rt
+                .block_on_std(hyper::body::aggregate(response.into_body()))
+                .unwrap();
+            let lines = std::str::from_utf8(&body.bytes())
                 .unwrap()
                 .lines()
                 .collect::<Vec<_>>();
@@ -218,7 +226,7 @@ mod test {
         }
 
         // Shut down server
-        block_on(topology.stop()).unwrap();
+        rt.block_on(topology.stop()).unwrap();
         shutdown_on_idle(rt);
     }
 }

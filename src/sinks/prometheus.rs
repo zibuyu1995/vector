@@ -331,14 +331,14 @@ impl PrometheusSink {
         let last_flush_timestamp = Arc::clone(&self.last_flush_timestamp);
         let flush_period_secs = self.config.flush_period_secs.clone();
 
-        let new_service = move || {
+        let new_service = hyper::service::make_service_fn(move |_| {
             let metrics = Arc::clone(&metrics);
             let namespace = namespace.clone();
             let buckets = buckets.clone();
             let last_flush_timestamp = Arc::clone(&last_flush_timestamp);
             let flush_period_secs = flush_period_secs.clone();
 
-            service_fn(move |req| {
+            let svc = service_fn(move |req| {
                 let metrics = metrics.read().unwrap();
                 let last_flush_timestamp = last_flush_timestamp.read().unwrap();
                 let interval = (Utc::now().timestamp() - *last_flush_timestamp) as u64;
@@ -348,18 +348,21 @@ impl PrometheusSink {
                     method = field::debug(req.method()),
                     path = field::debug(req.uri().path()),
                 )
-                .in_scope(|| handle(req, &namespace, &buckets, expired, &metrics))
-            })
-        };
+                .in_scope(|| handle(req, &namespace, &buckets, expired, &metrics).compat())
+            });
+
+            async move { Ok::<_, std::convert::Infallible>(svc) }
+        });
 
         let (trigger, tripwire) = Tripwire::new();
 
+        use futures::{compat::Future01CompatExt, FutureExt, TryFutureExt};
         let server = Server::bind(&self.config.address)
             .serve(new_service)
-            .with_graceful_shutdown(tripwire.clone())
+            .with_graceful_shutdown(tripwire.clone().compat().map(drop))
             .map_err(|e| eprintln!("server error: {}", e));
 
-        tokio01::spawn(server);
+        tokio::spawn(server);
         self.server_shutdown_trigger = Some(trigger);
     }
 }

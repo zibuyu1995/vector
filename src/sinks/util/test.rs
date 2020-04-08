@@ -25,30 +25,37 @@ pub fn build_test_server(
     impl Future<Item = (), Error = ()>,
 ) {
     let (tx, rx) = mpsc::channel(100);
-    let service = move || {
+    let service = hyper::service::make_service_fn(move |_| {
         let tx = tx.clone();
-        service_fn(move |req: Request<Body>| {
+        let svc = service_fn(move |req: Request<Body>| {
             let (parts, body) = req.into_parts();
 
             let tx = tx.clone();
-            tokio01::spawn(
-                body.concat2()
-                    .map_err(|e| panic!(e))
-                    .and_then(|body| tx.send((parts, body)))
-                    .map(|_| ())
-                    .map_err(|e| panic!(e)),
-            );
+
+            tokio::spawn(async move {
+                let body = hyper::body::aggregate(body).await.unwrap();
+                use bytes05::Buf;
+                tx.send((parts, body.to_bytes()));
+            });
 
             let res = Response::new(Body::empty());
             futures::future::ok::<_, std::convert::Infallible>(res)
-        })
-    };
+        });
+
+        futures::future::ok::<_, std::convert::Infallible>(svc)
+    });
 
     let (trigger, tripwire) = stream_cancel::Tripwire::new();
+
+    use futures::compat::Future01CompatExt;
+    use futures::{FutureExt, TryFutureExt};
+
     let server = Server::bind(addr)
         .serve(service)
-        .with_graceful_shutdown(tripwire)
-        .map_err(|e| panic!("server error: {}", e));
+        .with_graceful_shutdown(tripwire.compat().map(drop))
+        .map_err(|e| panic!("server error: {}", e))
+        .boxed()
+        .compat();
 
     (rx, trigger, server)
 }

@@ -11,7 +11,7 @@ use crate::{
     topology::config::{DataType, SinkConfig, SinkContext, SinkDescription},
 };
 use chrono::{DateTime, Utc};
-use futures::compat::Compat01As03;
+use futures::{FutureExt, TryFutureExt};
 use futures01::{Future, Sink};
 use http::{Method, StatusCode, Uri};
 use hyper;
@@ -231,6 +231,8 @@ impl InfluxDBSvc {
 
         let healthcheck = client
             .call(request)
+            .boxed()
+            .compat()
             .map_err(|err| err.into())
             .and_then(|response| match response.status() {
                 StatusCode::OK => Ok(()),
@@ -293,8 +295,9 @@ fn encode_uri(
 impl Service<Vec<Metric>> for InfluxDBSvc {
     type Response = HttpResponse;
     type Error = HttpError;
-    type Future =
-        Compat01As03<Box<dyn Future<Item = Self::Response, Error = Self::Error> + Send + 'static>>;
+    // type Future =
+    // Compat01As03<Box<dyn Future<Item = Self::Response, Error = Self::Error> + Send + 'static>>;
+    type Future = <HttpBatchService as Service<Vec<u8>>>::Future;
 
     fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         self.inner.poll_ready(cx)
@@ -304,8 +307,7 @@ impl Service<Vec<Metric>> for InfluxDBSvc {
         let input = encode_events(items, &self.config.namespace);
         let body: Vec<u8> = input.into_bytes();
 
-        let fut = self.inner.call(body);
-        Compat01As03::new(fut)
+        self.inner.call(body)
     }
 }
 

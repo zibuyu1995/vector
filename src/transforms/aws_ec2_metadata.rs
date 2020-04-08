@@ -3,15 +3,11 @@ use crate::{
     event::Event,
     topology::config::{DataType, TransformConfig, TransformContext, TransformDescription},
 };
-use bytes05::{Buf, Bytes};
+use bytes::Bytes;
 use futures::compat::Future01CompatExt;
 use futures01::Stream;
-use http::{
-    header::{HeaderName, HeaderValue},
-    uri::PathAndQuery,
-    Request, StatusCode, Uri,
-};
-use hyper::{client::connect::HttpConnector, Body, Client};
+use http01::{uri::PathAndQuery, Request, StatusCode, Uri};
+use hyper12::{client::connect::HttpConnector, Body, Client};
 use serde::{Deserialize, Serialize};
 use std::collections::{hash_map::RandomState, HashSet};
 use std::time::{Duration, Instant};
@@ -75,7 +71,7 @@ lazy_static::lazy_static! {
     ];
 
     static ref API_TOKEN: PathAndQuery = PathAndQuery::from_static("/latest/api/token");
-    static ref TOKEN_HEADER: HeaderName = HeaderName::from_static("X-aws-ec2-metadata-token");
+    static ref TOKEN_HEADER: Bytes = Bytes::from("X-aws-ec2-metadata-token");
     static ref HOST: Uri = Uri::from_static("http://169.254.169.254");
 }
 
@@ -119,7 +115,7 @@ impl TransformConfig for Ec2Metadata {
         let host = self
             .host
             .clone()
-            .map(|s| Uri::from_maybe_shared(s).unwrap())
+            .map(|s| Uri::from_shared(s.into()).unwrap())
             .unwrap_or(HOST.clone());
 
         let refresh_interval = self
@@ -251,14 +247,14 @@ impl MetadataClient {
             .header("X-aws-ec2-metadata-token-ttl-seconds", "21600")
             .body(Body::empty())?;
 
-        let res = self.client.request(req).await?;
+        let res = self.client.request(req).compat().await?;
 
         if res.status() != StatusCode::OK {
             return Err(Ec2MetadataError::UnableToFetchToken.into());
         }
 
-        let body = hyper::body::aggregate(res.into_body()).await?;
-        let token = body.to_bytes();
+        let body = res.into_body().concat2().compat().await?;
+        let token = body.into_bytes();
 
         let next_refresh = Instant::now() + Duration::from_secs(21600);
         self.token = Some((token.clone(), next_refresh));
@@ -274,21 +270,17 @@ impl MetadataClient {
         let uri = Uri::from_parts(parts)?;
 
         let req = Request::get(uri)
-            .header(
-                (&*TOKEN_HEADER).clone(),
-                HeaderValue::from_maybe_shared(token)?,
-            )
+            .header(TOKEN_HEADER.clone(), token)
             .body(Body::empty())?;
 
-        let res = self.client.request(req).await?;
+        let res = self.client.request(req).compat().await?;
 
         if res.status() != StatusCode::OK {
             warn!(message="Identity document request failed.", status = %res.status());
             return Ok(None);
         }
 
-        let body = hyper::body::aggregate(res.into_body()).await?;
-        let body = body.bytes();
+        let body = res.into_body().concat2().compat().await?;
 
         serde_json::from_slice(&body[..])
             .map_err(Into::into)
@@ -310,22 +302,19 @@ impl MetadataClient {
         debug!(message = "Sending metadata request.", %uri);
 
         let req = Request::get(uri)
-            .header(
-                (&*TOKEN_HEADER).clone(),
-                HeaderValue::from_maybe_shared(token)?,
-            )
+            .header(TOKEN_HEADER.clone(), token)
             .body(Body::empty())?;
 
-        let res = self.client.request(req).await?;
+        let res = self.client.request(req).compat().await?;
 
         if StatusCode::OK != res.status() {
             warn!(message="Metadata request failed.", status = %res.status());
             return Ok(None);
         }
 
-        let body = hyper::body::aggregate(res.into_body()).await?;
+        let body = res.into_body().concat2().compat().await?;
 
-        Ok(Some(body.to_bytes()))
+        Ok(Some(body.into_bytes()))
     }
 
     pub async fn refresh_metadata(&mut self) -> Result<(), crate::Error> {

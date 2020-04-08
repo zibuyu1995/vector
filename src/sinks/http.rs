@@ -9,6 +9,7 @@ use crate::{
     tls::{TlsOptions, TlsSettings},
     topology::config::{DataType, SinkConfig, SinkContext, SinkDescription},
 };
+use futures::{FutureExt, TryFutureExt};
 use futures01::{future, Future, Sink};
 use http::{
     header::{self, HeaderName, HeaderValue},
@@ -249,6 +250,8 @@ fn healthcheck(
 
     let healthcheck = client
         .call(request)
+        .boxed()
+        .compat()
         .map_err(|err| err.into())
         .and_then(|response| {
             use hyper::StatusCode;
@@ -277,11 +280,7 @@ fn build_uri(base: UriSerde) -> Uri {
     let base: Uri = base.into();
     Uri::builder()
         .scheme(base.scheme_str().unwrap_or("http"))
-        .authority(
-            base.authority_part()
-                .map(|a| a.as_str())
-                .unwrap_or("127.0.0.1"),
-        )
+        .authority(base.authority().map(|a| a.as_str()).unwrap_or("127.0.0.1"))
         .path_and_query(base.path_and_query().map(|pq| pq.as_str()).unwrap_or(""))
         .build()
         .expect("bug building uri")
@@ -294,7 +293,7 @@ mod tests {
         assert_downcast_matches,
         runtime::Runtime,
         sinks::http::HttpSinkConfig,
-        sinks::util::http::HttpSink,
+        sinks::util::{http::HttpSink, test::build_test_server},
         test_util::{next_addr, random_lines_with_stream, shutdown_on_idle},
         topology::config::SinkContext,
     };
@@ -560,41 +559,5 @@ mod tests {
 
         assert_eq!(num_lines, output_lines.len());
         assert_eq!(input_lines, output_lines);
-    }
-
-    fn build_test_server(
-        addr: &std::net::SocketAddr,
-    ) -> (
-        mpsc::Receiver<(http::request::Parts, bytes05::Bytes)>,
-        stream_cancel::Trigger,
-        impl Future<Item = (), Error = ()>,
-    ) {
-        let (tx, rx) = mpsc::channel(100);
-        let service = move || {
-            let tx = tx.clone();
-            service_fn(move |req: Request<Body>| {
-                let (parts, body) = req.into_parts();
-
-                let tx = tx.clone();
-                tokio01::spawn(
-                    body.concat2()
-                        .map_err(|e| panic!(e))
-                        .and_then(|body| tx.send((parts, body)))
-                        .map(|_| ())
-                        .map_err(|e| panic!(e)),
-                );
-
-                let res = Response::new(Body::empty());
-                futures::future::ok::<_, std::convert::Infallible>(res)
-            })
-        };
-
-        let (trigger, tripwire) = stream_cancel::Tripwire::new();
-        let server = Server::bind(addr)
-            .serve(service)
-            .with_graceful_shutdown(tripwire)
-            .map_err(|e| panic!("server error: {}", e));
-
-        (rx, trigger, server)
     }
 }
