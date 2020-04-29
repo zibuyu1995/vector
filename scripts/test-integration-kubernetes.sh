@@ -43,4 +43,4 @@ export KUBE_TEST_DEPLOY_COMMAND="scripts/deploy-kubernetes-test.sh"
 export CONTAINER_IMAGE="$CONTAINER_IMAGE_REPO:$TEST_RUN_ID"
 
 # Run the tests.
-cargo test --no-default-features --features kubernetes-integration-tests
+cargo test --no-default-features --features kubernetes-integration-tests -- sources::kubernetes

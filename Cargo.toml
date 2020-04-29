@@ -383,6 +383,9 @@ docker = [
   "pulsar-integration-tests",
   "splunk-integration-tests",
 ]
+kubernetes = [
+  "kubernetes-integration-tests",
+]
 
 aws-integration-tests = ["sinks-aws_cloudwatch_logs", "sinks-aws_cloudwatch_metrics", "sinks-elasticsearch", "sinks-aws_kinesis_firehose", "sinks-aws_kinesis_streams", "sinks-aws_s3", "transforms-aws_ec2_metadata"]
 aws-cloudwatch-logs-integration-tests = ["sinks-aws_cloudwatch_logs"]
@@ -402,9 +405,7 @@ kafka-integration-tests = ["sinks-kafka"]
 loki-integration-tests = ["sinks-loki"]
 pulsar-integration-tests = ["sinks-pulsar"]
 splunk-integration-tests = ["sinks-splunk_hec", "warp"]
-
-kubernetes = ["kubernetes-integration-tests"]
-kubernetes-integration-tests = ["uuid"]
+kubernetes-integration-tests = ["sources-kubernetes", "transforms-kubernetes", "uuid", "k8s-openapi"]
 
 disable-resolv-conf = []
 

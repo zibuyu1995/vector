@@ -461,60 +461,25 @@ mod integration_tests {
         echo, info_vector_logs, logs, start_vector, user_namespace, Kube,
     };
     use crate::test_util::{random_string, wait_for};
-    use kube::api::RawApi;
     use uuid::Uuid;
 
-    static NAME_MARKER: &'static str = "$(NAME)";
     static FIELD_MARKER: &'static str = "$(FIELD)";
 
-    static ROLE_BINDING_YAML: &'static str = r#"
-# Permissions to use Kubernetes API.
-# Necessary for kubernetes_pod_metadata transform.
-# Requires that RBAC authorization is enabled.
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRoleBinding
-metadata:
-  name: $(NAME)
-subjects:
-- kind: ServiceAccount
-  name: default
-  namespace: $(TEST_NAMESPACE)
-roleRef:
-  kind: ClusterRole
-  name: view
-  apiGroup: rbac.authorization.k8s.io
-"#;
-
     static CONFIG_MAP_YAML_WITH_METADATA: &'static str = r#"
-# ConfigMap which contains vector.toml configuration for pods.
 apiVersion: v1
 kind: ConfigMap
 metadata:
   name: vector-config
-  namespace: $(TEST_NAMESPACE)
 data:
-  vector-agent-config: |
-    # VECTOR.TOML
-    # Configuration for vector-agent
-
-    # Set global options
-    data_dir = "/tmp/vector/"
-
-    # Ingest logs from Kubernetes
-    [sources.kubernetes_logs]
-      type = "kubernetes"
-      include_namespaces = ["$(USER_TEST_NAMESPACE)"]
-      include_container_names = [$(USER_CONTAINERS)]
-      include_pod_uids = [$(USER_POD_UIDS)]
-
-    [transforms.kube_metadata]
+  vector.toml: |
+    [transforms.kubernetes_with_metadata]
       type = "kubernetes_pod_metadata"
-      inputs = ["kubernetes_logs"]
+      inputs = ["kubernetes"]
       $(FIELD)
 
     [sinks.out]
       type = "console"
-      inputs = ["kube_metadata"]
+      inputs = ["kubernetes_with_metadata"]
       target = "stdout"
 
       encoding = "json"
@@ -522,20 +487,6 @@ data:
 
   # This line is not in VECTOR.TOML
 "#;
-
-    fn cluster_role_binding_api() -> RawApi {
-        RawApi {
-            group: "rbac.authorization.k8s.io".into(),
-            resource: "clusterrolebindings".into(),
-            prefix: "apis".into(),
-            version: "v1".into(),
-            ..Default::default()
-        }
-    }
-
-    fn binding_name(namespace: &str) -> String {
-        "binding-".to_owned() + namespace
-    }
 
     fn metadata_config_map(fields: Option<Vec<&str>>) -> String {
         let replace = if let Some(fields) = fields {
@@ -564,27 +515,13 @@ data:
         let namespace = format!("{}-{}", namespace, Uuid::new_v4());
         let message = random_string(300);
         let user_namespace = user_namespace(namespace.as_str());
-        let binding_name = binding_name(namespace.as_str());
 
         let kube = Kube::new(namespace.as_str());
         let user = Kube::new(user_namespace.clone().as_str());
 
-        // Cluster role binding
-        kube.create_raw_with::<k8s_openapi::api::rbac::v1::ClusterRoleBinding>(
-            &cluster_role_binding_api(),
-            ROLE_BINDING_YAML
-                .replace(NAME_MARKER, binding_name.as_str())
-                .as_str(),
-        );
-        let _binding = kube.deleter(cluster_role_binding_api(), binding_name.as_str());
-
         // Start vector
-        let vector = start_vector(
-            &kube,
-            &user_namespace,
-            None,
-            metadata_config_map(Some(fields)).as_str(),
-        );
+        let _vector_deployment =
+            start_vector(&namespace, metadata_config_map(Some(fields)).as_str());
 
         // Start echo
         let _echo = echo(&user, "echo", &message);
@@ -592,7 +529,7 @@ data:
         // Verify logs
         wait_for(|| {
             // If any daemon logged message, done.
-            for line in logs(&kube, &vector) {
+            for line in logs(&kube) {
                 if line
                     .get(crate::event::log_schema().message_key().as_ref())
                     .and_then(|value| value.as_str())
@@ -603,7 +540,7 @@ data:
                         return true;
                     } else {
                         info!(?line);
-                        info_vector_logs(&kube, &vector);
+                        info_vector_logs(&kube);
                         panic!("Test failed");
                     }
                 } else {
