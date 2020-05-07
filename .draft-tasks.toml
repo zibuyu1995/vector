@@ -1,0 +1,2 @@
+[pre-up]
+make-deb = "make package-deb-x86_64"
