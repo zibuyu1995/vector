@@ -1,3 +1,4 @@
+#![recursion_limit = "256"]
 #![allow(clippy::approx_constant)]
 #![allow(clippy::assertions_on_constants)]
 #![allow(clippy::blacklisted_name)]
