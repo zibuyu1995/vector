@@ -15,6 +15,8 @@ mod tcp;
 mod udp;
 mod unix;
 mod vector;
+#[cfg(feature = "sources-kubernetes-logs")]
+mod kubernetes_logs;
 
 pub use self::add_fields::*;
 pub use self::aws_kinesis_streams::*;
@@ -33,6 +35,8 @@ pub use self::tcp::*;
 pub use self::udp::*;
 pub use self::unix::*;
 pub use self::vector::*;
+#[cfg(feature = "sources-kubernetes-logs")]
+pub use self::kubernetes_logs::*;
 
 pub trait InternalEvent: std::fmt::Debug {
     fn emit_logs(&self) {}
