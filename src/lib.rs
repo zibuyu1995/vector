@@ -20,6 +20,7 @@ pub mod generate;
 pub mod internal_events;
 #[cfg(feature = "rdkafka")]
 pub mod kafka;
+pub mod kubernetes;
 pub mod list;
 pub mod metrics;
 pub mod region;
