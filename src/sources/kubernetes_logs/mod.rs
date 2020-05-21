@@ -8,5 +8,6 @@ mod k8s_paths_provider;
 mod path_helpers;
 mod parser;
 mod partial_events_merger;
+mod pod_metadata_annotator;
 
 const FILE_KEY: &str = "file";
