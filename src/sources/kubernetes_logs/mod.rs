@@ -6,3 +6,4 @@
 
 mod k8s_paths_provider;
 mod path_helpers;
+mod parser;
