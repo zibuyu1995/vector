@@ -5762,6 +5762,7 @@ dependencies = [
  "inventory",
  "jemallocator",
  "k8s-openapi",
+ "kubernetes-test-framework",
  "lazy_static",
  "leveldb",
  "libc",
