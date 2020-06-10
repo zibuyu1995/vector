@@ -2015,6 +2015,7 @@ name = "kubernetes-test-framework"
 version = "0.1.0"
 dependencies = [
  "k8s-openapi",
+ "once_cell",
  "serde_json",
  "tempfile",
 ]
