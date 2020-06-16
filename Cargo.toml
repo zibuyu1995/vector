@@ -88,7 +88,7 @@ serde_json = { version = "1.0.33", features = ["raw_value"] }
 
 # Prost
 prost = "0.5"
-prost-derive = "0.5"
+prost-derive = "0.6"
 prost-types = "0.5"
 
 # GCP

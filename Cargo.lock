@@ -3252,7 +3252,7 @@ checksum = "96d14b1c185652833d24aaad41c5832b0be5616a590227c1fbff57c616754b23"
 dependencies = [
  "byteorder",
  "bytes 0.4.12",
- "prost-derive",
+ "prost-derive 0.5.0",
 ]
 
 [[package]]
@@ -3284,6 +3284,19 @@ dependencies = [
  "proc-macro2 0.4.30",
  "quote 0.6.13",
  "syn 0.15.44",
+]
+
+[[package]]
+name = "prost-derive"
+version = "0.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "537aa19b95acde10a12fec4301466386f757403de4cd4e5b4fa78fb5ecb18f72"
+dependencies = [
+ "anyhow",
+ "itertools",
+ "proc-macro2 1.0.8",
+ "quote 1.0.2",
+ "syn 1.0.14",
 ]
 
 [[package]]
@@ -3325,7 +3338,7 @@ dependencies = [
  "nom 5.1.0",
  "prost",
  "prost-build",
- "prost-derive",
+ "prost-derive 0.5.0",
  "rand 0.7.3",
  "regex",
  "tokio 0.1.22",
@@ -5954,7 +5967,7 @@ dependencies = [
  "pretty_assertions",
  "prost",
  "prost-build",
- "prost-derive",
+ "prost-derive 0.6.1",
  "prost-types",
  "pulsar",
  "rand 0.5.6",
