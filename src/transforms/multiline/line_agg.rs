@@ -46,129 +46,28 @@ pub(super) struct Config {
     pub condition_pattern: Regex,
     /// Mode of operation, specifies how the condition pattern is interpreted.
     pub mode: Mode,
-    /// The maximum time to wait for the continuation. Once this timeout is
-    /// reached, the buffered message is guaraneed to be flushed, even if
-    /// incomplete.
-    pub timeout: Duration,
 }
 
-impl Config {
-    pub(super) fn for_legacy(marker: Regex, timeout_ms: u64) -> Self {
-        let start_pattern = marker;
-        let condition_pattern = start_pattern.clone();
-        let mode = Mode::HaltBefore;
-        let timeout = Duration::from_millis(timeout_ms);
-
-        Self {
-            start_pattern,
-            condition_pattern,
-            mode,
-            timeout,
-        }
-    }
-}
-
-pub(super) struct LineAgg<T, K> {
-    /// The stream from which we read the lines.
-    inner: T,
-
+pub struct LineAgg<T, K> {
     /// Configuration parameters to use.
     config: Config,
-
-    /// Line per key.
-    /// Key is usually a filename or other line source identifier.
-    buffers: HashMap<K, BytesMut>,
-
-    /// Draining queue. We switch to draining mode when we get `None` from
-    /// the inner stream. In this mode we stop polling `inner` for new lines
-    /// and just flush all the buffered data.
-    draining: Option<Vec<(Bytes, K)>>,
-
-    /// A queue of key timeouts.
-    timeouts: DelayQueue<K>,
-
-    /// A queue of keys with expired timeouts.
-    expired: VecDeque<K>,
 }
 
 impl<T, K> LineAgg<T, K>
 where
     K: Hash + Eq + Clone,
 {
-    pub(super) fn new(inner: T, config: Config) -> Self {
+    pub fn new(config: Config) -> Self {
         Self {
-            inner,
-
             config,
 
-            draining: None,
             buffers: HashMap::new(),
-            timeouts: DelayQueue::new(),
-            expired: VecDeque::new(),
-        }
-    }
-}
-
-impl<T, K> Stream for LineAgg<T, K>
-where
-    T: Stream<Item = (Bytes, K), Error = ()>,
-    K: Hash + Eq + Clone,
-{
-    /// `Bytes` - the line data; `K` - file name, or other line source.
-    type Item = (Bytes, K);
-    type Error = ();
-
-    fn poll(&mut self) -> Poll<Option<Self::Item>, Self::Error> {
-        loop {
-            // If we're in draining mode, short circut here.
-            if let Some(to_drain) = &mut self.draining {
-                if let Some((line, src)) = to_drain.pop() {
-                    return Ok(Async::Ready(Some((line, src))));
-                } else {
-                    return Ok(Async::Ready(None));
-                }
-            }
-
-            // Check for keys that have hit their timeout.
-            while let Ok(Async::Ready(Some(expired_key))) = self.timeouts.poll() {
-                self.expired.push_back(expired_key.into_inner());
-            }
-
-            match self.inner.poll() {
-                Ok(Async::Ready(Some((line, src)))) => {
-                    // Handle the incoming line we got from `inner`. If the
-                    // handler gave us something - return it, otherwise continue
-                    // with the flow.
-                    if let Some(val) = self.handle_line(line, src) {
-                        return Ok(Async::Ready(Some(val)));
-                    }
-                }
-                Ok(Async::Ready(None)) => {
-                    // We got `None`, this means the `inner` stream has ended.
-                    // Start flushing all existing data, stop polling `inner`.
-                    self.draining =
-                        Some(self.buffers.drain().map(|(k, v)| (v.into(), k)).collect());
-                }
-                Ok(Async::NotReady) => {
-                    // We didn't get any lines from `inner`, so we just give
-                    // a line from the expired lines queue.
-                    if let Some(key) = self.expired.pop_front() {
-                        if let Some(buffered) = self.buffers.remove(&key) {
-                            return Ok(Async::Ready(Some((buffered.freeze(), key))));
-                        }
-                    }
-
-                    return Ok(Async::NotReady);
-                }
-                Err(()) => return Err(()),
-            };
         }
     }
 }
 
 impl<T, K> LineAgg<T, K>
 where
-    T: Stream<Item = (Bytes, K), Error = ()>,
     K: Hash + Eq + Clone,
 {
     /// Handle line, if we have something to output - return it.
