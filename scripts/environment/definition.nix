@@ -73,6 +73,12 @@ scope@{ pkgs ? import <nixpkgs> {} }:
     docker-compose
     # Wasm
     llvmPackages.libclang
+    # K8s
+    kubectl
+    minikube
+    kustomize
+    skaffold
+    cargo-watch
   ] ++ (if stdenv.isDarwin then [
     darwin.cf-private
     darwin.apple_sdk.frameworks.CoreServices
