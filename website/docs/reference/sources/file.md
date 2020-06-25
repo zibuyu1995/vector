@@ -1,5 +1,5 @@
 ---
-last_modified_on: "2020-05-21"
+last_modified_on: "2020-06-25"
 delivery_guarantee: "best_effort"
 component_title: "File"
 description: "The Vector [`file`](#file) source ingests data through one or more local files and outputs `log` events."
@@ -73,6 +73,7 @@ ingests data through one or more local files and outputs
   ignore_older = 86400 # optional, no default, seconds
   include = ["/var/log/nginx/*.log"] # required
   max_line_bytes = 102400 # optional, default, bytes
+  skip_first_lines = 0 # optional, default
   start_at_beginning = false # optional, default
 
   # Context
@@ -551,6 +552,29 @@ the buffered message is guaraneed to be flushed, even if incomplete.
 Instead of balancing read capacity fairly across all watched files, prioritize
 draining the oldest files before moving on to read data from younger files.
  See [File Read Order](#file-read-order) for more info.
+
+
+</Field>
+<Field
+  common={false}
+  defaultValue={0}
+  enumValues={null}
+  examples={[0]}
+  groups={[]}
+  name={"skip_first_lines"}
+  path={null}
+  relevantWhen={null}
+  required={false}
+  templateable={false}
+  type={"uint"}
+  unit={null}
+  warnings={[]}
+  >
+
+### skip_first_lines
+
+Number of first lines per file that should be skipped.
+
 
 
 </Field>

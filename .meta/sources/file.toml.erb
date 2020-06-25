@@ -240,6 +240,14 @@ Instead of balancing read capacity fairly across all watched files, prioritize \
 draining the oldest files before moving on to read data from younger files.\
 """
 
+[sources.file.options.skip_first_lines]
+type = "uint"
+common = false
+default = 0
+description = """\
+Number of first lines per file that should be skipped.\
+"""
+
 [sources.file.fields.log.fields.file]
 type = "string"
 examples = ["/var/log/nginx.log"]
