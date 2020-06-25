@@ -63,10 +63,10 @@ where
         self,
         mut chans: C,
         mut shutdown: impl Future + Unpin,
-    ) -> Result<Shutdown, <C as Sink<(Bytes, String)>>::Error>
+    ) -> Result<Shutdown, <C as Sink<(Bytes, String, u64)>>::Error>
     where
-        C: Sink<(Bytes, String)> + Unpin,
-        <C as Sink<(Bytes, String)>>::Error: std::error::Error,
+        C: Sink<(Bytes, String, u64)> + Unpin,
+        <C as Sink<(Bytes, String, u64)>>::Error: std::error::Error,
     {
         let mut line_buffer = Vec::new();
         let mut fingerprint_buffer = Vec::new();
@@ -212,6 +212,7 @@ where
                             lines.push((
                                 line_buffer.clone().into(),
                                 watcher.path.to_str().expect("not a valid path").to_owned(),
+                                file_id,
                             ));
                             line_buffer.clear();
                         }
