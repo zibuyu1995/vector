@@ -1,7 +1,8 @@
 use crate::{
     buffers::Acker,
-    event::metric::{Metric, MetricKind, MetricValue},
+    event::metric::{Metric, MetricKind, MetricValue, StatisticKind},
     sinks::util::MetricEntry,
+    statistic::Summary,
     topology::config::{DataType, SinkConfig, SinkContext, SinkDescription},
     Event,
 };
@@ -177,6 +178,7 @@ fn encode_metric_datum(namespace: &str, buckets: &[f64], expired: bool, metric: 
             MetricValue::Distribution {
                 values,
                 sample_rates,
+                statistic: StatisticKind::Histogram,
             } => {
                 // convert ditributions into aggregated histograms
                 let mut counts = Vec::new();
@@ -215,6 +217,22 @@ fn encode_metric_datum(namespace: &str, buckets: &[f64], expired: bool, metric: 
                 let tags = encode_tags(tags);
                 s.push_str(&format!("{}_sum{} {}\n", fullname, tags, sum));
                 s.push_str(&format!("{}_count{} {}\n", fullname, tags, count));
+            }
+            MetricValue::Distribution {
+                values,
+                sample_rates,
+                statistic: StatisticKind::Distribution,
+            } => {
+                if let Some(summary) =
+                    Summary::new(values, sample_rates, StatisticKind::Distribution)
+                {
+                    let tags = encode_tags(tags);
+                    s.push_str(&format!("{}_sum{} {}\n", fullname, tags, summary.sum));
+                    s.push_str(&format!("{}_count{} {}\n", fullname, tags, summary.count));
+                    s.push_str(&format!("{}_avg{} {}\n", fullname, tags, summary.avg));
+                    s.push_str(&format!("{}_min{} {}\n", fullname, tags, summary.min));
+                    s.push_str(&format!("{}_max{} {}\n", fullname, tags, summary.max));
+                }
             }
             MetricValue::AggregatedHistogram {
                 buckets,
