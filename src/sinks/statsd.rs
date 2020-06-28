@@ -221,7 +221,7 @@ mod test {
     use super::*;
     use crate::{
         buffers::Acker,
-        event::{metric::MetricKind, metric::MetricValue, Metric},
+        event::{metric::MetricKind, metric::MetricValue, Metric, StatisticKind},
         test_util::{collect_n, runtime},
         Event,
     };
@@ -297,6 +297,7 @@ mod test {
             value: MetricValue::Distribution {
                 values: vec![1.5],
                 sample_rates: vec![1],
+                statistic: StatisticKind::Histogram,
             },
         };
         let event = Event::Metric(metric1.clone());
@@ -357,6 +358,7 @@ mod test {
             value: MetricValue::Distribution {
                 values: vec![2.0],
                 sample_rates: vec![100],
+                statistic: StatisticKind::Histogram,
             },
         });
         events.push(event);
