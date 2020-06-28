@@ -91,6 +91,7 @@ pub mod serde;
 pub mod shutdown;
 pub mod sinks;
 pub mod sources;
+pub mod statistic;
 pub mod stream;
 pub mod template;
 pub mod test_util;

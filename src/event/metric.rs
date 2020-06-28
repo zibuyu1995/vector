@@ -60,15 +60,6 @@ pub enum StatisticKind {
     Distribution,
 }
 
-impl StatisticKind {
-    pub fn percentile(self) -> &'static [f64] {
-        match self {
-            Self::Histogram => &[0.95],
-            Self::Distribution => &[0.5, 0.75, 0.9, 0.95, 0.99],
-        }
-    }
-}
-
 impl Metric {
     pub fn into_absolute(&self) -> Self {
         Self {
