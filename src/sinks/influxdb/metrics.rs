@@ -255,8 +255,9 @@ fn encode_events(
             MetricValue::Distribution {
                 values,
                 sample_rates,
+                statistic,
             } => {
-                let fields = encode_distribution(&values, &sample_rates);
+                let fields = encode_distribution(&values, &sample_rates, statistic.percentile());
 
                 influx_line_protocol(
                     protocol_version,
@@ -277,7 +278,11 @@ fn encode_events(
     return output;
 }
 
-fn encode_distribution(values: &[f64], counts: &[u32]) -> Option<HashMap<String, Field>> {
+fn encode_distribution(
+    values: &[f64],
+    counts: &[u32],
+    percentile: &[f64],
+) -> Option<HashMap<String, Field>> {
     if values.len() != counts.len() {
         return None;
     }
@@ -317,7 +322,9 @@ fn encode_distribution(values: &[f64], counts: &[u32]) -> Option<HashMap<String,
     let max = samples.last().unwrap();
 
     let p50 = samples[(0.50 * length - 1.0).round() as usize];
-    let p95 = samples[(0.95 * length - 1.0).round() as usize];
+    let quantiles = percentile
+        .iter()
+        .map(|&p| (p, samples[(p * length - 1.0).round() as usize]));
 
     let sum = samples.iter().sum();
     let avg = sum / length;
@@ -329,9 +336,9 @@ fn encode_distribution(values: &[f64], counts: &[u32]) -> Option<HashMap<String,
         ("avg".to_owned(), Field::Float(avg)),
         ("sum".to_owned(), Field::Float(sum)),
         ("count".to_owned(), Field::Float(length)),
-        ("quantile_0.95".to_owned(), Field::Float(p95)),
     ]
     .into_iter()
+    .chain(quantiles.map(|(p, v)| (format!("quantile_{:.2}", p), Field::Float(v))))
     .collect();
 
     Some(fields)
