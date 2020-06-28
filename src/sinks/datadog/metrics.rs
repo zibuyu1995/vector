@@ -633,7 +633,7 @@ mod tests {
 
     #[test]
     fn encode_distribution() {
-        // https://docs.datadoghq.com/developers/metrics/metrics_type/?tab=histogram#metric-type-definition
+        // https://docs.datadoghq.com/developers/metrics/types/?tab=distribution#definition
         let events = vec![Metric {
             name: "requests".into(),
             timestamp: Some(ts()),
@@ -650,7 +650,7 @@ mod tests {
 
         assert_eq!(
             json,
-            r#"{"series":[{"metric":"min:requests","type":"gauge","interval":60,"points":[[1542182950,1.0]],"tags":null},{"metric":"avg:requests","type":"gauge","interval":60,"points":[[1542182950,1.875]],"tags":null},{"metric":"count:requests","type":"count","interval":60,"points":[[1542182950,8.0]],"tags":null},{"metric":"sum:requests","type":"count","interval":60,"points":[[1542182950,6.0]],"tags":null},{"metric":"max:requests","type":"gauge","interval":60,"points":[[1542182950,3.0]],"tags":null},{"metric":"p50:requests","type":"gauge","interval":60,"points":[[1542182950,2.0]],"tags":null}]},{"metric":"p75:requests","type":"gauge","interval":60,"points":[[1542182950,3.0]],"tags":null}]},{"metric":"p90:requests","type":"gauge","interval":60,"points":[[1542182950,3.0]],"tags":null}]},{"metric":"p95:requests","type":"gauge","interval":60,"points":[[1542182950,3.0]],"tags":null}]},{"metric":"p99:requests","type":"gauge","interval":60,"points":[[1542182950,3.0]],"tags":null}]}"#
+            r#"{"series":[{"metric":"min:requests","type":"gauge","interval":60,"points":[[1542182950,1.0]],"tags":null},{"metric":"avg:requests","type":"gauge","interval":60,"points":[[1542182950,1.875]],"tags":null},{"metric":"count:requests","type":"count","interval":60,"points":[[1542182950,8.0]],"tags":null},{"metric":"max:requests","type":"gauge","interval":60,"points":[[1542182950,3.0]],"tags":null},{"metric":"sum:requests","type":"count","interval":60,"points":[[1542182950,15.0]],"tags":null},{"metric":"p50:requests","type":"gauge","interval":60,"points":[[1542182950,2.0]],"tags":null},{"metric":"p75:requests","type":"gauge","interval":60,"points":[[1542182950,2.0]],"tags":null},{"metric":"p90:requests","type":"gauge","interval":60,"points":[[1542182950,3.0]],"tags":null},{"metric":"p95:requests","type":"gauge","interval":60,"points":[[1542182950,3.0]],"tags":null},{"metric":"p99:requests","type":"gauge","interval":60,"points":[[1542182950,3.0]],"tags":null}]}"#
         );
     }
 }

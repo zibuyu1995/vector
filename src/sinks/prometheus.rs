@@ -582,7 +582,7 @@ mod tests {
         );
         assert_eq!(
             frame,
-            "requests_sum 15\nrequests_count 8\nrequests_avg 2\nrequests_min 1\nrequests_max 3\n"
+            "requests_sum 15\nrequests_count 8\nrequests_avg 1.875\nrequests_min 1\nrequests_max 3\n"
                 .to_owned()
         );
     }
