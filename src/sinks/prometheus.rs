@@ -560,6 +560,34 @@ mod tests {
     }
 
     #[test]
+    fn test_encode_distribution_distribution() {
+        let metric = Metric {
+            name: "requests".to_owned(),
+            timestamp: None,
+            tags: None,
+            kind: MetricKind::Absolute,
+            value: MetricValue::Distribution {
+                values: vec![1.0, 2.0, 3.0],
+                sample_rates: vec![3, 3, 2],
+                statistic: StatisticKind::Distribution,
+            },
+        };
+
+        let header = encode_metric_header("", &metric);
+        let frame = encode_metric_datum("", &[0.0, 2.5, 5.0], false, &metric);
+
+        assert_eq!(
+            header,
+            "# HELP requests requests\n# TYPE requests histogram\n".to_owned()
+        );
+        assert_eq!(
+            frame,
+            "requests_sum 15\nrequests_count 8\nrequests_avg 2\nrequests_min 1\nrequests_max 3\n"
+                .to_owned()
+        );
+    }
+
+    #[test]
     fn test_encode_histogram() {
         let metric = Metric {
             name: "requests".to_owned(),

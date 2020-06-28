@@ -609,7 +609,7 @@ mod tests {
     }
 
     #[test]
-    fn encode_distribution() {
+    fn encode_histogram() {
         // https://docs.datadoghq.com/developers/metrics/metrics_type/?tab=histogram#metric-type-definition
         let events = vec![Metric {
             name: "requests".into(),
@@ -628,6 +628,29 @@ mod tests {
         assert_eq!(
             json,
             r#"{"series":[{"metric":"requests.min","type":"gauge","interval":60,"points":[[1542182950,1.0]],"tags":null},{"metric":"requests.avg","type":"gauge","interval":60,"points":[[1542182950,1.875]],"tags":null},{"metric":"requests.count","type":"rate","interval":60,"points":[[1542182950,8.0]],"tags":null},{"metric":"requests.median","type":"gauge","interval":60,"points":[[1542182950,2.0]],"tags":null},{"metric":"requests.max","type":"gauge","interval":60,"points":[[1542182950,3.0]],"tags":null},{"metric":"requests.95percentile","type":"gauge","interval":60,"points":[[1542182950,3.0]],"tags":null}]}"#
+        );
+    }
+
+    #[test]
+    fn encode_distribution() {
+        // https://docs.datadoghq.com/developers/metrics/metrics_type/?tab=histogram#metric-type-definition
+        let events = vec![Metric {
+            name: "requests".into(),
+            timestamp: Some(ts()),
+            tags: None,
+            kind: MetricKind::Incremental,
+            value: MetricValue::Distribution {
+                values: vec![1.0, 2.0, 3.0],
+                sample_rates: vec![3, 3, 2],
+                statistic: StatisticKind::Distribution,
+            },
+        }];
+        let input = encode_events(events, 60, "");
+        let json = serde_json::to_string(&input).unwrap();
+
+        assert_eq!(
+            json,
+            r#"{"series":[{"metric":"min:requests","type":"gauge","interval":60,"points":[[1542182950,1.0]],"tags":null},{"metric":"avg:requests","type":"gauge","interval":60,"points":[[1542182950,1.875]],"tags":null},{"metric":"count:requests","type":"count","interval":60,"points":[[1542182950,8.0]],"tags":null},{"metric":"sum:requests","type":"count","interval":60,"points":[[1542182950,6.0]],"tags":null},{"metric":"max:requests","type":"gauge","interval":60,"points":[[1542182950,3.0]],"tags":null},{"metric":"p50:requests","type":"gauge","interval":60,"points":[[1542182950,2.0]],"tags":null}]},{"metric":"p75:requests","type":"gauge","interval":60,"points":[[1542182950,3.0]],"tags":null}]},{"metric":"p90:requests","type":"gauge","interval":60,"points":[[1542182950,3.0]],"tags":null}]},{"metric":"p95:requests","type":"gauge","interval":60,"points":[[1542182950,3.0]],"tags":null}]},{"metric":"p99:requests","type":"gauge","interval":60,"points":[[1542182950,3.0]],"tags":null}]}"#
         );
     }
 }
