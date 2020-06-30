@@ -585,7 +585,7 @@ mod tests {
 
         assert_eq!(
             header,
-            "# HELP requests requests\n# TYPE requests histogram\n".to_owned()
+            "# HELP requests requests\n# TYPE requests distribution\n".to_owned()
         );
         assert_eq!(
             frame,
