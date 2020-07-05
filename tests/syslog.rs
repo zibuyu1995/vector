@@ -11,8 +11,9 @@ use serde_json::Value;
 use sinks::socket::SocketSinkConfig;
 use sinks::util::{encoding::EncodingConfig, Encoding};
 use std::{collections::HashMap, str::FromStr, thread, time::Duration};
+use tokio01::codec::BytesCodec;
 #[cfg(unix)]
-use tokio01::codec::{BytesCodec, FramedWrite, LinesCodec};
+use tokio01::codec::{FramedWrite, LinesCodec};
 #[cfg(unix)]
 use tokio_uds::UnixStream;
 use vector::test_util::{
